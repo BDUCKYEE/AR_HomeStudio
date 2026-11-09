@@ -1,0 +1,4 @@
+# 고정 버전 (CLAUDE.md cv 세션 메모). uv pip install -c cv/constraints.txt ... 로 사용
+torch==2.3.1
+torchvision==0.18.1
+numpy<2

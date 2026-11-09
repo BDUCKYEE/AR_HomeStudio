@@ -1,8 +1,16 @@
-# cv 세션에서 버전을 확정해 채웁니다.
-# VGGT는 원본 저장소 안내에 따라 별도 설치합니다.
-numpy
-opencv-contrib-python   # ChArUco (cv2.aruco)
-open3d
-trimesh                 # .glb 내보내기
-ultralytics             # YOLO26-pose (AGPL-3.0)
+# 실제 환경: /storage/AI/test/.venv (uv, Python 3.12.14). source cv/env.sh 로 활성화
+# 설치 시 항상 제약 파일을 건다: uv pip install -c cv/constraints.txt <패키지>
+torch==2.3.1
+torchvision==0.18.1
+numpy<2                 # 1.26.4
+opencv-python           # 4.10, cv2.aruco(ChArUco) 포함 (4.7부터 본체에 포함 → contrib 불필요)
+open3d                  # 0.20.0
+trimesh                 # 5.2.0, .glb 내보내기
+pyyaml
 python-dotenv
+pillow
+einops
+safetensors
+huggingface_hub
+# VGGT: uv pip install -c cv/constraints.txt --no-deps -e /storage/AI/test/vggt
+# ultralytics (YOLO26-pose, AGPL-3.0) 는 2주차에 추가

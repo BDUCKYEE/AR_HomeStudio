@@ -1,0 +1,24 @@
+# ChArUco 보드 파라미터 (월드 원점 = 이 보드의 중심, docs/interfaces.md)
+# 생성: python -m cv.calib.make_charuco  → ${SHARED_DIR}/charuco/charuco_A4_*.pdf/.png
+# 인쇄 후 실측: python -m cv.calib.make_charuco --set-measured <칸 크기 mm> [--marker-mm <마커 크기 mm>]
+
+dictionary: DICT_4X4_50     # cv2.aruco 사전 이름
+squares_x: 5                # 가로 칸 수 (보드 X축, 용지 짧은 변)
+squares_y: 7                # 세로 칸 수 (보드 Y축, 용지 긴 변)
+legacy_pattern: false       # OpenCV >= 4.6 기본 배치
+
+# 설계값 (PDF에 그려진 크기)
+design:
+  square_length_mm: 35.0
+  marker_length_mm: 26.0
+
+# 인쇄물 실측값. null이면 design 값을 사용한다.
+measured:
+  square_length_mm: null
+  marker_length_mm: null
+
+# 인쇄 페이지 (A4 세로). px_per_mm=24 → 칸 1개가 정확히 840px, PDF 페이지가 정확히 210×297mm
+page:
+  width_mm: 210.0
+  height_mm: 297.0
+  px_per_mm: 24
