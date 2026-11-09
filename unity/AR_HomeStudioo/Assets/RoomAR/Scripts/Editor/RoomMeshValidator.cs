@@ -116,6 +116,64 @@ namespace RoomAR.EditorTools
             bool originInside = b.min.x <= 0 && b.max.x >= 0 && b.min.z <= 0 && b.max.z >= 0;
             items.Add((originInside ? Level.OK : Level.WARN, "원점 위치", originInside ? "월드 원점(XZ)이 메시 범위 안" : "월드 원점(XZ)이 메시 범위 밖 — 원점 정렬 확인 필요"));
 
+            // MeshCollider 동작: (1) 내부 80% 영역 9×9 격자에서 아래로 Raycast → 바닥(|y|<0.15m) 맞는 비율
+            //                    (2) 같은 격자 중 바닥이 맞은 곳에 공을 1.2m에서 떨어뜨려 3초 뒤 메시 아래로 빠지지 않는지
+            Physics.SyncTransforms();
+            int rays = 0, floorHits = 0;
+            var dropPoints = new List<Vector3>();
+            for (int i = 0; i < 9; i++)
+            for (int k = 0; k < 9; k++)
+            {
+                float x = Mathf.Lerp(b.min.x, b.max.x, 0.1f + 0.8f * i / 8f);
+                float z = Mathf.Lerp(b.min.z, b.max.z, 0.1f + 0.8f * k / 8f);
+                rays++;
+                // 천장/가구에 막히지 않도록 바닥 바로 위(0.3m)에서 쏨
+                if (Physics.Raycast(new Vector3(x, 0.3f, z), Vector3.down, out var hit, 1f) && Mathf.Abs(hit.point.y) < 0.15f)
+                {
+                    floorHits++;
+                    dropPoints.Add(new Vector3(x, 1.2f, z));
+                }
+            }
+            // 같은 격자를 뒷면 포함으로 다시 쏴서 법선(면 방향) 뒤집힘과 실제 구멍을 구분
+            bool prevBack = Physics.queriesHitBackfaces;
+            Physics.queriesHitBackfaces = true;
+            int anyHits = 0;
+            for (int i = 0; i < 9; i++)
+            for (int k = 0; k < 9; k++)
+            {
+                float x = Mathf.Lerp(b.min.x, b.max.x, 0.1f + 0.8f * i / 8f);
+                float z = Mathf.Lerp(b.min.z, b.max.z, 0.1f + 0.8f * k / 8f);
+                if (Physics.Raycast(new Vector3(x, 0.3f, z), Vector3.down, out var hit, 1f) && Mathf.Abs(hit.point.y) < 0.15f) anyHits++;
+            }
+            Physics.queriesHitBackfaces = prevBack;
+
+            float hitRatio = (float)floorHits / rays;
+            items.Add((hitRatio >= 0.5f ? Level.OK : Level.WARN, "바닥 Raycast",
+                $"앞면 {floorHits}/{rays} ({hitRatio:P0}), 뒷면 포함 {anyHits}/{rays} 지점에서 y≈0 바닥 충돌 " +
+                (anyHits > floorHits * 2 ? "→ 바닥 면 방향(법선)이 아래를 향함" : "→ 차이 작음: 바닥 구멍/누락")));
+
+            if (dropPoints.Count > 0)
+            {
+                var prevMode = Physics.simulationMode;
+                Physics.simulationMode = SimulationMode.Script;
+                var balls = new List<Rigidbody>();
+                foreach (var p in dropPoints)
+                {
+                    var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    go.transform.position = p;
+                    go.transform.localScale = Vector3.one * 0.2f;
+                    var rb = go.AddComponent<Rigidbody>();
+                    rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+                    balls.Add(rb);
+                }
+                for (int n = 0; n < 150; n++) Physics.Simulate(0.02f);
+                int fell = balls.Count(r => r.position.y < -0.2f);
+                foreach (var r in balls) UnityEngine.Object.DestroyImmediate(r.gameObject);
+                Physics.simulationMode = prevMode;
+                items.Add((fell == 0 ? Level.OK : fell <= balls.Count / 10 ? Level.WARN : Level.FAIL,
+                    "공 낙하 테스트 (메시 단독)", $"바닥이 맞은 {balls.Count}지점 중 {fell}개가 y<-0.2로 빠짐 (1.2m 낙하, 3초, 보조 바닥 없이)"));
+            }
+
             sb.AppendLine($"- 로딩 시간: {loadSec:F2}s, 메시 {s.MeshCount}개, 정점 {s.VertexCount:N0}");
             sb.AppendLine();
             sb.AppendLine("| 결과 | 항목 | 값 |");

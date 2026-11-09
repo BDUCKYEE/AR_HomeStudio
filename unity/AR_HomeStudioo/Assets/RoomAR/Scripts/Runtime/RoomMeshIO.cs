@@ -127,7 +127,15 @@ namespace RoomAR
         /// 스키마가 정해지기 전이라 문자열 값/불리언 키에 example/sample/예제가 있는지로 판단합니다.
         /// </summary>
         public static bool IsSampleMesh(string json)
-            => !string.IsNullOrEmpty(json) && (SampleValue.IsMatch(json) || SampleFlag.IsMatch(json));
+        {
+            if (string.IsNullOrEmpty(json)) return false;
+            // cv 규약: "source": "sample" | "real" 가 있으면 그것을 우선
+            var m = SourceField.Match(json);
+            if (m.Success) return !m.Groups[1].Value.Equals("real", StringComparison.OrdinalIgnoreCase);
+            return SampleValue.IsMatch(json) || SampleFlag.IsMatch(json);
+        }
+
+        static readonly Regex SourceField = new(@"""source""\s*:\s*""([^""]*)""", RegexOptions.IgnoreCase);
     }
 
     /// <summary>인스턴스화된 메시의 월드(Unity) 좌표 통계.</summary>

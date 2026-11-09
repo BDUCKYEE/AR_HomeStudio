@@ -4,9 +4,9 @@
 
 ## 현재 상태
 
-- 마지막 갱신: 2026-11-09
-- 단계: A단계 완료, B단계 코드(로더/셰이더/검증) 완료 → cv의 `room_latest.glb` 대기 중
-- 사용 중인 메시: 없음 (박스 방). 합성 테스트 메시로만 검증함
+- 마지막 갱신: 2026-11-09 18:15
+- 단계: A단계 완료, B단계 완료 (cv 예제 메시로 실제 로드/검증까지)
+- 사용 중인 메시: `room_20261109_example-bedroom-180624.glb` (`source: sample`, 예제 이미지 8장). 바닥과 벽 일부가 비어 있어 보조 바닥(y=0)을 켠 상태로 사용
 - 환경: Unity 6000.3.28f1, URP 17.3, Input System 1.20.1 (Active Input Handling = Input System Package)
 
 ## READY
@@ -14,6 +14,31 @@
 - READY: 박스 방 물리 샌드박스 씬 `Assets/RoomAR/Scenes/BoxRoom.unity` (비상용) / Unity Hub에서 `unity/AR_HomeStudioo` 열기 → BoxRoom 씬 Play. 씬이 없거나 깨졌으면 메뉴 **RoomAR > Build All Scenes**로 재생성. 배치 모드 자가 테스트: `Unity.exe -batchmode -nographics -projectPath unity/AR_HomeStudioo -executeMethod RoomAR.EditorTools.SandboxSelfTest.Run -logFile -` → `[RoomAR][SelfTest] PASS`
 
 - READY: 방 메시 런타임 로더 + 정점 색 셰이더 + 검증기 (메시 없이 준비 완료) / `RoomMesh.unity` 씬 Play → `SHARED_DIR/meshes/room_latest.glb` 자동 로드, **L** 다시 불러오기, **V** 메시 표시 토글. 검증: 메뉴 **RoomAR > Validate room_latest.glb** 또는 배치 `-executeMethod RoomAR.EditorTools.RoomMeshValidator.ValidateBatch [-roomGlb <path>]` (`-quit` 없이 실행, 보고서 `unity/AR_HomeStudioo/Logs/room_mesh_validation.md`). 합성 glb(3.3×2.5×2.4m, 정점 색)로 배치 검증 OK, 반 크기 + `source: sample_images` json → 크기 WARN/종료 0, json 없음 → 크기 FAIL/종료 1 확인
+
+- READY: cv `room_latest.glb`(예제 메시) 실행 중 로드 + MeshCollider + 정점 색 + 보조 바닥 / `RoomMesh.unity` Play → 화면 왼쪽 위에 메시 정보 표시, Space로 공 → 메시 위에서 튐. **F** 보조 바닥 토글. 배치 테스트: `-executeMethod RoomAR.EditorTools.RoomMeshLoaderSelfTest.RunBatch` (`-quit` 없이) → `PASS` (81개 낙하 중 바닥 뚫림 0, 벽 구멍 탈출 4)
+
+### room_latest.glb 검증 결과 (2026-11-09 18:12, 배치 모드)
+
+- glb: `Z:\meshes\room_latest.glb` = `room_20261109_example-bedroom-180624.glb` (json `source: sample` → 크기 검사는 경고만)
+- 로딩 0.66s, 메시 1개, 정점 57,142
+
+| 결과 | 항목 | 값 |
+|---|---|---|
+| OK | 삼각형 수 | 105,195 |
+| OK | 정점 색 | COLOR_0 있음 |
+| OK | MeshCollider | 1개 |
+| WARN | 수평 긴 변 | 5.05 m (기대 3.3 ±15%) |
+| WARN | 수평 짧은 변 | 3.20 m (기대 2.5 ±15%) |
+| WARN | 높이 | 1.99 m (기대 2.4 ±15%) |
+| OK | 바운딩 박스 (Unity) | min (-1.54, -0.03, -2.58) / max (1.66, 1.96, 2.48) |
+| OK | 바닥 높이 | p1 -0.005 m, p5 0.004 m, min -0.027 m, \|y\|<3cm 정점 8.1% |
+| OK | 원점 위치 | 월드 원점(XZ)이 메시 범위 안 |
+| WARN | 바닥 Raycast | 9×9 격자 중 7/81(9%)만 y≈0 바닥에 맞음. 뒷면 포함해도 7/81 → 법선 문제가 아닌 **바닥 누락** |
+| FAIL | 공 낙하 (메시 단독) | 바닥이 맞은 7지점 중 5개가 빠짐 (굴러서 바닥/벽 구멍으로) |
+
+**종합: FAIL (메시 단독).** 크기 경고는 예제 이미지라 예상된 결과입니다. 바닥/벽 누락 때문에 메시만으로는 공이 빠집니다.
+→ Unity 쪽 대응: `RoomMeshLoader`가 y=0에 보이지 않는 보조 바닥(메시 범위 + 0.5m)을 기본으로 켭니다. 켠 상태에서는 81개 낙하 중 바닥 뚫림 0개였고, 4개는 −Z 쪽과 +X 쪽 벽 구멍으로 방 밖으로 나갔다가 보조 바닥 끝에서 떨어졌습니다 (y < −5에서 자동 제거).
+- 교차 확인: cv json의 bbox(glTF) x [-1.66, 1.54] → Unity x [-1.54, 1.66]으로 X 반전, 바닥 1백분위(cv -0.004 / unity -0.005)가 일치합니다. 좌표 규약대로 동작합니다.
 
 ### 방 메시 연동 구성 (B단계)
 
@@ -43,6 +68,7 @@
 | 왼쪽 클릭 | 커서 위치로 Raycast → 맞은 Rigidbody에 `AddForceAtPosition` (충격량 2 N·s) |
 | `[` / `]` | 공 탄성(PhysicsMaterial.bounciness) −/+ 0.1 |
 | C / R | 공 모두 제거 / 씬 초기화 |
+| L / V / F | (RoomMesh 씬) 메시 다시 불러오기 / 메시 표시 토글 / 보조 바닥 토글 |
 
 ### 박스 방 구성
 
@@ -58,7 +84,8 @@
 - [x] glTFast 패키지 추가 (6.20.0)
 - [x] `room_latest.glb` 불러오기 + `MeshCollider` 적용 (코드 완료, 실제 메시 대기)
 - [x] 정점 색 표시용 셰이더 (URP)
-- [ ] 실제 `room_latest.glb` 검증 결과 기록
+- [x] 실제 `room_latest.glb` 검증 결과 기록 (예제 메시)
+- [ ] 실제 방 사진 메시(`source: real`)로 재검증
 - [x] 박스 방 버전 비상용으로 유지
 - [ ] 18:00 리허설
 
@@ -69,7 +96,8 @@
 
 ## 상대 세션에 요청
 
-- **cv → `room_latest.json`에 입력 출처 필드를 넣어 주십시오.** 예: `"source": "sample"` (예제 이미지) / `"source": "real"` (실제 방 사진). 지금은 스키마가 정해지지 않아서, json의 문자열 값에 `example`/`sample`/`예제`/`샘플`/`demo`가 있거나 이름에 그 단어가 들어간 키가 `true`이면 예제 메시로 판단합니다. 예제 메시이면 Unity 검증기가 크기 검사를 경고만 냅니다.
+- ~~`room_latest.json`에 `source` 필드~~ → 반영 확인 (18:06 `"source": "sample"`). Unity는 `source`가 `real`이 아니면 예제 메시로 봅니다.
+- **바닥/벽 누락**: 예제 메시는 바닥 Raycast 9%만 맞음 (위 검증 표). 실제 방 촬영 때 바닥을 충분히 찍도록 촬영 가이드에 넣어 주시고, 가능하면 Poisson 밀도 trimming이 바닥을 깎지 않는지 확인 부탁드립니다. Unity는 보조 바닥으로 버팁니다.
 - 가능하면 json에 `triangles`, `scale_method`(ChArUco/추정), 생성 시각도 넣어 주십시오. 검증 보고서에 함께 기록하겠습니다.
 - `room_latest.glb`는 임시 이름으로 쓴 뒤 rename으로 교체해 주십시오. Unity가 L 키로 다시 불러올 때 쓰다 만 파일을 읽지 않게 하기 위해서입니다. 쓰다 만 파일을 읽더라도 Unity는 기존 메시를 유지합니다.
 
@@ -85,3 +113,4 @@
 | 2026-11-09 | A단계: 박스 방 샌드박스(FlyCamera, SandboxController, SceneBuilder, SandboxSelfTest) 추가, 배치 모드 컴파일 및 자가 테스트 PASS |
 | 2026-11-09 18:00 | git pull → status-cv "최신 메시: 없음", `Z:\meshes` 없음 → B단계 중 메시 없이 가능한 부분 진행 |
 | 2026-11-09 18:00 | B단계 코드: glTFast 6.20.0, EnvConfig/RoomMeshIO/RoomMeshLoader, VertexColor 셰이더, RoomMesh 씬, RoomMeshValidator. 합성 glb로 배치 검증 통과. `room_latest.json` 대기 시작 |
+| 2026-11-09 18:05 | `room_latest.json` 생성 감지 → 예제 bedroom 메시 검증. 바닥 누락 발견 → 보조 바닥(F 토글), 바닥 Raycast/공 낙하 검사, RoomMeshLoaderSelfTest 추가. `source` 필드 우선 판단 |
