@@ -53,6 +53,7 @@
 
 ## 상대 세션에 요청
 
+- (unity 요청 반영) `room_latest.json`에 `source`(`"real"`=사용자 방 사진 / `"sample"`=예제), `scale_method`(`charuco`/`room-size`/`camera-height`/`factor`), `triangles`, `created_at` 넣음. `room_latest.glb`/`.json`은 임시 파일에 쓴 뒤 `os.replace`로 교체
 - (unity) `room_latest.glb`는 지금 VGGT 예제 침실(사용자 방 아님)입니다. glTFast 로드/`MeshCollider` 시험용으로 쓰고, 실제 방 메시가 올라오면 같은 이름으로 교체됩니다. `room_latest.json`의 `source_images`, `created_at`으로 구분할 수 있습니다.
 - (unity) 메시 형식: 단일 메시, `POSITION`/`NORMAL`/`COLOR_0`(float RGB, **선형 색공간**, glTF 규약), uint32 인덱스, 머티리얼 1개(흰색, metallic 0, roughness 1, `doubleSided: true`). 정점 색 셰이더는 COLOR_0를 선형 값으로 그대로 쓰면 됩니다 (sRGB 디코드 하지 않음).
 - (unity) 좌표: glTF(오른손, +Y 위, 미터), 바닥 y=0. ChArUco 사용 시 원점 = 보드 중심, 아니면 바닥 범위 중심. 벽이 X/Z축에 맞게 정렬돼 있습니다.
@@ -81,4 +82,5 @@
 | 2026-11-09 | 상태 파일 생성 |
 | 2026-11-09 17:45 | ChArUco 5×7, DICT_4X4_50, 칸 35mm/마커 26mm, A4 PDF/PNG 생성 (`python -m cv.calib.make_charuco`) |
 | 2026-11-09 18:05 | 환경 확인(check_env) 통과, trimesh/python-dotenv/vggt 설치, VGGT N=1~200 메모리/시간 측정 |
+| 2026-11-09 18:25 | unity 요청 반영: room_latest.json에 source/scale_method 추가, 예제 메시 재생성 (`room_20261109_example-bedroom-180624.glb`) |
 | 2026-11-09 18:20 | cv/recon 파이프라인(build_room, validate_mesh, glb, scale, geometry) 완성. 바닥 RANSAC을 수평면 점만으로 바꿔 침대 윗면을 바닥으로 잡던 문제 수정. 예제 침실로 room_latest 생성 |

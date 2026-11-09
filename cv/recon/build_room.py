@@ -172,6 +172,8 @@ def main() -> None:
     ap.add_argument("--max-images", type=int)
     ap.add_argument("--expect-size", type=float, nargs=2, help="검증 시 기대 방 크기 (기본 recon.yaml)")
     ap.add_argument("--no-size-check", action="store_true")
+    ap.add_argument("--source", choices=["auto", "real", "sample"], default="auto",
+                    help="room_latest.json 의 source. auto: 입력이 ${SHARED_DIR}/scans/ 아래면 real, 아니면 sample")
     a = ap.parse_args()
 
     from cv.recon.vggt_infer import list_images, load_images, load_model, run
@@ -282,8 +284,14 @@ def main() -> None:
 
     origin = ("ChArUco 보드 중심 (보드 +X→월드 +X, 보드 +Y→월드 +Z)" if scale_info["method"] == "charuco"
               else "바닥 범위(1~99 백분위) 중심, 축은 벽 방향(맨해튼) 정렬")
+    source = a.source
+    if source == "auto":
+        scans = (shared_dir() / "scans").resolve()
+        source = "real" if scans in a.images.resolve().parents else "sample"
     meta = {
         "file": glb.name,
+        "source": source,                      # unity 요청: "real"(사용자 방 사진) / "sample"(예제 이미지)
+        "scale_method": scale_info["method"],  # charuco / room-size / camera-height / factor
         "created_at": extras["created_at"],
         "source_images": str(a.images),
         "num_images": len(paths),
