@@ -1,0 +1,8 @@
+# cv 세션에서 버전을 확정해 채웁니다.
+# VGGT는 원본 저장소 안내에 따라 별도 설치합니다.
+numpy
+opencv-contrib-python   # ChArUco (cv2.aruco)
+open3d
+trimesh                 # .glb 내보내기
+ultralytics             # YOLO26-pose (AGPL-3.0)
+python-dotenv

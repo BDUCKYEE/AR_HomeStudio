@@ -1,0 +1,97 @@
+# ===== 비밀 정보 =====
+.env
+.env.*
+!.env.example
+
+# ===== 개인 공간 데이터 (Samba 공유 폴더에 둠, git 금지) =====
+# 방 사진, 메시, 녹화 영상, 포인트 클라우드, 캘리브레이션 원본 이미지
+data/
+shared/
+captures/
+recordings/
+*.glb
+*.gltf
+*.ply
+*.obj
+*.pcd
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.heic
+*.HEIC
+*.npz
+
+# cv 쪽 이미지 원본 (README용 이미지는 docs/images/에 직접 골라 추가)
+cv/**/*.jpg
+cv/**/*.jpeg
+cv/**/*.png
+cv/**/*.JPG
+
+# ===== 모델 가중치 / 학습 산출물 =====
+*.pt
+*.pth
+*.onnx
+*.engine
+*.safetensors
+*.ckpt
+weights/
+runs/
+wandb/
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# ===== Unity (unity/ 아래 모든 프로젝트) =====
+unity/*/[Ll]ibrary/
+unity/*/[Tt]emp/
+unity/*/[Oo]bj/
+unity/*/[Bb]uild/
+unity/*/[Bb]uilds/
+unity/*/[Ll]ogs/
+unity/*/[Uu]ser[Ss]ettings/
+unity/*/[Mm]emoryCaptures/
+unity/*/[Rr]ecordings/
+unity/*/Assets/StreamingAssets/aa/
+unity/*/Assets/AssetStoreTools*
+unity/**/*.csproj
+unity/**/*.sln
+unity/**/*.slnx
+unity/**/*.suo
+unity/**/*.user
+unity/**/*.userprefs
+unity/**/*.pidb
+unity/**/*.booproj
+unity/**/*.svd
+unity/**/*.pdb
+unity/**/*.mdb
+unity/**/*.opendb
+unity/**/*.VC.db
+unity/**/*.apk
+unity/**/*.aab
+unity/**/*.unitypackage
+unity/**/crashlytics-build.properties
+unity/*/.vs/
+unity/*/.gradle/
+unity/*/.consulo/
+unity/*/.idea/
+# Unity 측 메시 임포트는 공유 폴더에서 런타임 로드하거나, 아래 폴더에 복사 후 로컬에서만 사용
+unity/*/Assets/RoomMesh/
+unity/*/Assets/RoomMesh.meta
+
+# ===== 에디터 / OS =====
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
