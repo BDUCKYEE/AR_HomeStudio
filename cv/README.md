@@ -5,7 +5,7 @@
 
 ## 환경
 
-가상환경은 저장소 밖 `/storage/AI/test/.venv` (uv, Python 3.12.14)를 씁니다. 캐시는 `/storage/AI/test/.cache`.
+가상환경은 저장소 밖 `/storage/AI/test/.venv` (uv, Python 3.12.14)를 씁니다. 캐시는 `/storage/AI/test/.cache` (uv, torch 등), Hugging Face/VGGT 가중치는 `HF_HOME=/storage/AI/cache/huggingface`.
 
 ```bash
 source cv/env.sh                               # venv 활성화 + 캐시 경로 + PYTHONPATH
@@ -18,13 +18,14 @@ python -m cv.recon.check_env                   # torch/CUDA/GPU, VGGT 가중치,
 ## ChArUco 보드 (`cv/calib/`)
 
 ```bash
-python -m cv.calib.make_charuco                     # ${SHARED_DIR}/charuco/charuco_A4_5x7_35mm_DICT_4X4_50.{pdf,png}
-python -m cv.calib.make_charuco --set-measured 34.8 # 인쇄물 실측 칸 크기(mm) → cv/config/charuco.yaml
+python -m cv.calib.make_charuco                     # charuco.yaml 대로 PDF/PNG 생성 (기존 파일은 --force 없이는 안 덮어씀)
+python -m cv.calib.make_charuco --set-measured 50   # 인쇄물 실측 칸 크기(mm) → cv/config/charuco.yaml
+python -m cv.calib.charuco_range                    # 현재 보드의 검출 거리 시험 (폰 / 1080p 웹캠, 합성)
 ```
 
-- 5×7칸, 칸 35mm, 마커 26mm, `DICT_4X4_50`, A4 세로. PDF는 "실제 크기(100%)"로 인쇄.
+- 현재 보드: A3, 5×7칸, 칸 50mm, 마커 37mm, `DICT_4X4_50`, **벽에 세로로 부착**. 월드 좌표계 정의는 `docs/interfaces.md` 1절.
 - 실측: 가로 5칸 전체 폭 ÷ 5, 세로 7칸 전체 높이 ÷ 7을 재서 평균. 마커만 따로 쟀으면 `--marker-mm`.
-- 폰 사진(12MP)에서 보드 검출은 카메라-보드 거리 약 1.6m까지 (합성 시험 기준). 2m 이상은 실패.
+- 검출 거리 (합성, 실제는 조금 짧음): 폰 12MP 정면 3.5m / 45° 이내 3.0m, 1080p 웹캠 2.0~2.5m. (예전 A4 35mm는 폰 1.6m)
 
 ## 방 메시 (`cv/recon/`)
 
@@ -36,8 +37,10 @@ python -m cv.recon.bench_vggt --images <폴더>         # 이미지 수별 메�
 ```
 
 순서: 이미지 → VGGT(GPU 0, 카메라+깊이) → 신뢰도/경계 필터 → 바닥 RANSAC(수평면 점만, 가장 낮은 평면) + 벽 방향 yaw 정렬
-→ 스케일(ChArUco 다시점 삼각측량 → 실패 시 `--room-size` / `--cam-height` / `--scale-factor`) → TSDF(미터, 2cm 복셀)
-→ 작은 조각 제거, quadric 간소화(15만 삼각형) → `.glb`(COLOR_0 선형 float, glTF 좌표계).
+→ 월드/스케일(ChArUco 다시점 삼각측량 + 3D 정합: 원점 = 보드 중심의 바닥 투영, +X = 보드 +X의 바닥 투영
+→ 실패 시 `--room-size` / `--cam-height` / `--scale-factor`) → TSDF(미터, 2cm 복셀)
+→ 작은 조각 제거, quadric 간소화(15만 삼각형) → 바닥 메우기(`--fill-floor auto|on|off`, 바닥 덮임 80% 미만이면 빈 칸을 y≈0 평면으로)
+→ `.glb`(COLOR_0 선형 float, glTF 좌표계).
 
 출력: `${SHARED_DIR}/meshes/room_<YYYYMMDD>_<desc>.glb`, `room_latest.glb`, `room_latest.json`,
 디버그 `${SHARED_DIR}/recon_debug/<이름>/` (points.ply, cameras.json, preview.png, report.json).
@@ -47,7 +50,7 @@ python -m cv.recon.bench_vggt --images <폴더>         # 이미지 수별 메�
 
 - 방 전체를 40~100장, 사진 사이 겹침이 충분하게 (한 걸음씩 이동하며 벽을 따라 한 바퀴 + 방 중앙에서 한 바퀴).
 - 바닥이 보이게 약간 아래를 향해. 가로/세로 방향은 한 가지로 통일.
-- ChArUco 보드는 바닥 위에 평평하게, **보드에서 1~1.5m 거리에서 서로 다른 방향으로 4장 이상** (보드와 주변 바닥/가구가 같이 보이게).
+- 벽의 ChArUco 보드가 **1~2.5m 거리에서 서로 다른 방향으로 4장 이상** 나오게 (보드와 주변 벽/바닥/가구가 같이 보이게).
 - JPG로 저장 (HEIC 미지원).
 
 ## 데이터

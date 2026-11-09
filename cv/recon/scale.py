@@ -1,12 +1,15 @@
-"""스케일(및 수평 위치/방향) 보정.
+"""스케일 보정과 월드 좌표계 결정.
 
-입력 점들은 이미 바닥 정렬된 좌표 (+Y 위, 바닥 y=0, 단위 임의)에 있다고 가정한다.
-각 함수는 (Sim3, info) 를 반환하며, Sim3는 "바닥 정렬 좌표 → 최종 월드(glTF, 미터)" 변환이다.
+ChArUco (charuco_world): docs/interfaces.md 1절 규약 (2026-11-10)
+  +Y(위) = 바닥 평면(RANSAC) 법선, 바닥 y=0
+  원점   = 보드 중심을 바닥 평면에 수직으로 내린 점
+  +X     = 보드 +X(인쇄물 가로 방향)를 바닥 평면에 투영한 방향
+  +Z     = X × Y (오른손). 벽에 바로 붙인 보드면 보드 앞면(방 안쪽)을 향한다
+  스케일 = 보드 칸 크기 (charuco.yaml 실측값)
+  보드 좌표계(OpenCV): 원점 보드 왼쪽 위 모서리, +X 오른쪽, +Y 아래(인쇄 방향), +Z 보드 안쪽(앞면의 반대)
 
-ChArUco 보드 → 월드 축 대응 (잠정, interfaces.md 에서 확정 예정):
-  보드 좌표계(OpenCV): 원점 보드 왼쪽 위, +X 오른쪽, +Y 아래(인쇄 방향), +Z 보드 안쪽(=바닥 아래)
-  월드(glTF):  X = 보드 +X,  Y(위) = 보드 -Z,  Z = 보드 +Y,  원점 = 보드 중심
-  (행렬 [[1,0,0],[0,0,-1],[0,1,0]], det=+1, 보드가 바닥에 앞면이 위로 놓인 경우)
+대체 방법 (room_size / cam_height / factor): 입력은 바닥 정렬 + 벽 방향 yaw 정렬된 점 (+Y 위, 바닥 y=0, 단위 임의),
+반환 Sim3 는 "바닥 정렬 좌표 → 월드(미터)", 원점은 바닥 범위 중심.
 """
 from __future__ import annotations
 
@@ -16,7 +19,7 @@ import cv2
 import numpy as np
 
 from cv.calib.charuco import CharucoSpec
-from cv.recon.geometry import Sim3, rot_y, triangulate, umeyama_2d
+from cv.recon.geometry import Sim3, camera_centers, triangulate, umeyama_3d
 from cv.recon.vggt_infer import open_rgb
 
 DETECT_MAX_SIDE = 4000
@@ -41,18 +44,14 @@ def detect_charuco(paths: list[Path], metas: list[dict], spec: CharucoSpec) -> d
     return obs
 
 
-def charuco_scale(paths, metas, extr, intr, depth, T_align: Sim3, spec: CharucoSpec, cfg: dict) -> tuple[Sim3 | None, dict]:
-    """ChArUco 코너를 다시점 삼각측량(VGGT 카메라) → 바닥 정렬 좌표 → 보드 실측 좌표와 2D 상사 정합."""
+def _board_corners_vggt(paths, metas, extr, intr, depth, spec, cfg, info) -> tuple[list, np.ndarray]:
+    """코너 검출 → 2개 이상 시점이면 DLT 삼각측량, 부족하면 깊이 맵 조회. VGGT 월드 좌표 반환."""
     obs = detect_charuco(paths, metas, spec)
-    views = sorted({i for v in obs.values() for i, _ in v})
-    info = {"method": "charuco", "views_with_board": len(views), "corners_seen": len(obs),
-            "square_mm": spec.square_m * 1000, "board_size_measured": spec.measured}
+    info.update(views_with_board=len({i for v in obs.values() for i, _ in v}), corners_seen=len(obs))
     if not obs:
-        info["fail"] = "보드 미검출"
-        return None, info
+        return [], np.zeros((0, 3))
     Pm = [intr[i] @ extr[i] for i in range(len(extr))]
-    ids, X = [], []
-    reproj = []
+    ids, X, reproj = [], [], []
     for cid, lst in obs.items():
         if len(lst) < 2:
             continue
@@ -65,10 +64,11 @@ def charuco_scale(paths, metas, extr, intr, depth, T_align: Sim3, spec: CharucoS
             ids.append(cid)
             X.append(Xc)
             reproj.append(float(np.mean(errs)))
-    mode = "triangulation"
+    info["mode"] = "triangulation"
+    if reproj:
+        info["reproj_px_mean"] = float(np.mean(reproj))
     if len(ids) < cfg["charuco_min_corners"]:
-        # 단일 시점: 깊이 맵 조회로 대체 (정밀도 낮음)
-        mode = "depth-lookup"
+        info["mode"] = "depth-lookup"   # 단일 시점: 깊이 맵 조회 (정밀도 낮음)
         ids, X = [], []
         for cid, lst in obs.items():
             pts = []
@@ -80,30 +80,65 @@ def charuco_scale(paths, metas, extr, intr, depth, T_align: Sim3, spec: CharucoS
                     K = intr[i]
                     pc = np.array([(uv[0] - K[0, 2]) / K[0, 0] * z, (uv[1] - K[1, 2]) / K[1, 1] * z, z])
                     R, t = extr[i][:, :3], extr[i][:, 3]
-                    pts.append(R.T @ (pc - t))
+                    pts.append(R.T @ (pc - t))     # OpenCV 카메라 → VGGT 월드
             if pts:
                 ids.append(cid)
                 X.append(np.median(pts, 0))
-    info["mode"] = mode
+    return ids, np.asarray(X).reshape(-1, 3)
+
+
+def charuco_world(paths, metas, extr, intr, depth, T_floor: Sim3, spec: CharucoSpec, cfg: dict
+                  ) -> tuple[Sim3 | None, dict]:
+    """VGGT 월드 → 월드(glTF, 미터) 변환을 보드 + 바닥 평면으로 결정 (모듈 docstring 규약).
+
+    T_floor: find_floor 결과 (행 1 = 바닥 법선 n(위), t[1] = d, 바닥: n·p + d = 0, VGGT 단위).
+    """
+    info = {"method": "charuco", "square_mm": spec.square_m * 1000, "marker_mm": spec.marker_m * 1000,
+            "board_size_measured": spec.measured}
+    ids, X = _board_corners_vggt(paths, metas, extr, intr, depth, spec, cfg, info)
     info["corners_used"] = len(ids)
-    if reproj and mode == "triangulation":
-        info["reproj_px_mean"] = float(np.mean(reproj))
     if len(ids) < cfg["charuco_min_corners"]:
-        info["fail"] = f"사용 가능한 코너 {len(ids)} < {cfg['charuco_min_corners']}"
+        info["fail"] = f"사용 가능한 코너 {len(ids)} < {cfg['charuco_min_corners']}" if ids or info.get("corners_seen") \
+            else "보드 미검출"
         return None, info
 
-    q = T_align.apply(np.asarray(X))                               # 바닥 정렬 좌표
-    obj = spec.make_board().getChessboardCorners()[np.asarray(ids)]  # 보드 좌표 (m), z=0
-    b = obj[:, :2] - spec.center_m[:2]                             # 보드 중심 원점, (bx, by) → 월드 (X, Z)
-    s, R2, t2 = umeyama_2d(q[:, [0, 2]], b)
-    res = (s * q[:, [0, 2]] @ R2.T + t2) - b
+    obj = spec.make_board().getChessboardCorners()[np.asarray(ids)]   # 보드 좌표 (m)
+    s, Rb, tb = umeyama_3d(obj, X)            # X ≈ s Rb obj + tb  (보드 m → VGGT 단위)
+    res = (s * obj @ Rb.T + tb - X) / s       # 미터
     rms_mm = float(np.sqrt((res ** 2).sum(1).mean()) * 1000)
-    info.update(scale=s, rms_mm=rms_mm, board_height_m=float(np.mean(s * q[:, 1])))
+    bz = Rb[:, 2]
+    out_of_plane_mm = float(np.sqrt(np.mean((res @ bz) ** 2)) * 1000)   # 휨/구김 정도
+    info.update(scale_units_per_m=s, rms_mm=rms_mm, out_of_plane_rms_mm=out_of_plane_mm)
     if rms_mm > cfg["charuco_max_rms_mm"]:
         info["fail"] = f"보드 정합 잔차 {rms_mm:.1f}mm > {cfg['charuco_max_rms_mm']}mm"
         return None, info
-    alpha = float(np.arctan2(R2[1, 0], R2[0, 0]))   # R2 = [[c,-s],[s,c]] on (x,z) == rot_y(alpha)
-    return Sim3(s, rot_y(alpha), np.array([t2[0], 0.0, t2[1]])), info
+
+    n, d = T_floor.R[1].copy(), float(T_floor.t[1])     # 바닥 법선(위), 바닥: n·p + d = 0
+    c = s * Rb @ spec.center_m + tb                      # 보드 중심 (VGGT)
+    h_units = float(n @ c + d)
+    o = c - h_units * n                                  # 바닥에 내린 점 = 월드 원점
+    bx = Rb[:, 0]
+    x = bx - (bx @ n) * n
+    if np.linalg.norm(x) < 0.5:
+        info["fail"] = f"보드 +X가 거의 수직 (|투영|={np.linalg.norm(x):.2f}) — 보드를 세로(인쇄 방향 그대로)로 붙였는지 확인"
+        return None, info
+    x /= np.linalg.norm(x)
+    z = np.cross(x, n)
+    R = np.stack([x, n, z])                              # 행 = 월드 X, Y, Z (VGGT 기준), det=+1
+    T = Sim3(1.0 / s, R, -(1.0 / s) * R @ o)             # X_w = (1/s) R (X_v - o)
+
+    front = -bz                                          # 보드 앞면 방향 (방 안쪽)
+    cams_w = T.apply(camera_centers(extr))
+    info.update(
+        board_center_height_m=h_units / s,
+        board_x_tilt_from_floor_deg=float(np.rad2deg(np.arcsin(np.clip(abs(bx @ n), 0, 1)))),
+        board_normal_vs_floor_deg=float(np.rad2deg(np.arccos(np.clip(abs(bz @ n), 0, 1)))),  # 벽 부착이면 ≈90
+        z_dot_board_front=float(z @ front),
+        cameras_on_plus_z_frac=float(np.mean(cams_w[:, 2] > 0)),
+    )
+    info["z_into_room"] = bool(info["cameras_on_plus_z_frac"] > 0.5 and
+                               (info["z_dot_board_front"] > 0.5 or info["board_normal_vs_floor_deg"] < 45))
+    return T, info
 
 
 def _center_xz(Q: np.ndarray, s: float) -> Sim3:

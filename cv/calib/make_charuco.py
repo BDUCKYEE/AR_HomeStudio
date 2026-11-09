@@ -36,7 +36,7 @@ def render_page() -> tuple[np.ndarray, dict]:
     W, H = int(round(page["width_mm"] * ppm)), int(round(page["height_mm"] * ppm))
     nx, ny = int(c["squares_x"]), int(c["squares_y"])
     bw, bh = nx * sq_px, ny * sq_px
-    if bw > W - 10 * ppm or bh > H - 30 * ppm:
+    if bw > W - 10 * ppm or bh > H - 30 * ppm:  # 좌우 5mm, 상하 15mm 여백
         raise ValueError("보드가 페이지 여백(좌우 5mm, 상하 15mm) 안에 들어가지 않습니다.")
 
     d = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, c["dictionary"]))
@@ -96,14 +96,17 @@ def self_check(img: np.ndarray, meta: dict) -> str:
     return f"코너 {n}/{n_exp} 검출, 칸 간격 {np.mean(d):.2f}px (기대 {meta['sq_px']}px)"
 
 
-def save(img: np.ndarray, meta: dict) -> tuple[Path, Path]:
+def save(img: np.ndarray, meta: dict, force: bool = False) -> tuple[Path, Path]:
     out = shared_dir() / "charuco"
     out.mkdir(parents=True, exist_ok=True)
-    stem = f"charuco_A4_{meta['nx']}x{meta['ny']}_{meta['sq_mm']:g}mm_{meta['dictionary']}"
+    paper = {(210, 297): "A4", (297, 420): "A3"}.get((round(meta["W"] / meta["ppm"]), round(meta["H"] / meta["ppm"])), "page")
+    stem = f"charuco_{paper}_{meta['nx']}x{meta['ny']}_{meta['sq_mm']:g}mm_{meta['dictionary']}"
     dpi = meta["ppm"] * 25.4  # 24 px/mm = 609.6 dpi → 페이지 = 정확히 A4
     pil = Image.fromarray(img).convert("1", dither=Image.Dither.NONE)
     png = out / f"{stem}.png"
     pdf = out / f"{stem}.pdf"
+    if not force and (png.exists() or pdf.exists()):
+        raise SystemExit(f"이미 있습니다 (덮어쓰려면 --force): {pdf if pdf.exists() else png}")
     pil.save(png, dpi=(dpi, dpi))
     pil.save(pdf, resolution=dpi)
     return png, pdf
@@ -135,6 +138,7 @@ def main() -> None:
     ap.add_argument("--set-measured", type=float, metavar="MM", help="인쇄물 실측 칸 크기 (mm)")
     ap.add_argument("--marker-mm", type=float, help="인쇄물 실측 마커 크기 (mm). 생략 시 설계 비율로 계산")
     ap.add_argument("--clear-measured", action="store_true")
+    ap.add_argument("--force", action="store_true", help="기존 PDF/PNG 덮어쓰기")
     a = ap.parse_args()
     if a.clear_measured:
         set_measured(None, None)
@@ -146,7 +150,7 @@ def main() -> None:
         return
     img, meta = render_page()
     print(self_check(img, meta))
-    png, pdf = save(img, meta)
+    png, pdf = save(img, meta, a.force)
     w, h = pdf_page_mm(pdf)
     print(f"PNG: {png}  ({meta['W']}x{meta['H']}px, {meta['ppm'] * 25.4:.1f} dpi)")
     print(f"PDF: {pdf}  (페이지 {w:.2f} x {h:.2f} mm)")

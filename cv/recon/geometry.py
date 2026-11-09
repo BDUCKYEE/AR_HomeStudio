@@ -162,3 +162,15 @@ def triangulate(Ps: list[np.ndarray], uvs: list[np.ndarray]) -> np.ndarray:
     _, _, Vt = np.linalg.svd(np.asarray(A))
     X = Vt[-1]
     return X[:3] / X[3]
+
+
+def umeyama_3d(src: np.ndarray, dst: np.ndarray) -> tuple[float, np.ndarray, np.ndarray]:
+    """dst ≈ s R src + t (3D 상사, 반사 없음). 반환 s, R(3x3), t."""
+    ms, md = src.mean(0), dst.mean(0)
+    a, b = src - ms, dst - md
+    H = b.T @ a / len(src)
+    U, S, Vt = np.linalg.svd(H)
+    D = np.diag([1.0, 1.0, np.sign(np.linalg.det(U @ Vt))])
+    R = U @ D @ Vt
+    s = float(np.trace(np.diag(S) @ D) / (a ** 2).sum(1).mean())
+    return s, R, md - s * R @ ms

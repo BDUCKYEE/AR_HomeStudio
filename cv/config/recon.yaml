@@ -33,3 +33,11 @@ mesh:
 room:
   expected_size_m: [3.3, 2.5]   # validate_mesh 기본 기대 크기 (가로, 세로)
   size_tolerance: 0.25          # ±25%
+
+floor_fill:                     # 바닥 메우기 (build_room --fill-floor auto|on|off)
+  mode: auto                    # auto: 바닥 덮임 비율 < auto_coverage 일 때만
+  auto_coverage: 0.8
+  cell_m: 0.05                  # 격자 칸 크기
+  floor_band_m: 0.04            # |y| < 이 값이면 바닥으로 봄
+  region_percentile: 1          # 방 범위 = 벽 정렬 좌표에서 점구름 1~99 백분위 직사각형
+  y_offset_m: -0.003            # 기존 바닥과 겹칠 때 깜빡임 방지

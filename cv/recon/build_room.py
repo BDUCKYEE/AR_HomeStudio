@@ -36,6 +36,7 @@ from cv.calib.charuco import load_charuco  # noqa: E402
 from cv.common.config import load_yaml, shared_dir  # noqa: E402
 from cv.recon import scale as sc  # noqa: E402
 from cv.recon.geometry import Sim3, camera_centers, extrinsic_after, find_floor, manhattan_yaw, rot_y  # noqa: E402
+from cv.recon.floor_fill import fill_floor  # noqa: E402
 from cv.recon.glb import srgb_to_linear, write_glb  # noqa: E402
 from cv.recon.validate_mesh import validate  # noqa: E402
 
@@ -172,6 +173,7 @@ def main() -> None:
     ap.add_argument("--max-images", type=int)
     ap.add_argument("--expect-size", type=float, nargs=2, help="검증 시 기대 방 크기 (기본 recon.yaml)")
     ap.add_argument("--no-size-check", action="store_true")
+    ap.add_argument("--fill-floor", choices=["auto", "on", "off"], help="바닥 메우기 (기본 recon.yaml floor_fill.mode)")
     ap.add_argument("--source", choices=["auto", "real", "sample"], default="auto",
                     help="room_latest.json 의 source. auto: 입력이 ${SHARED_DIR}/scans/ 아래면 real, 아니면 sample")
     a = ap.parse_args()
@@ -205,26 +207,29 @@ def main() -> None:
     unit = float(np.median(pred["depth"][mask]))
     log(f"신뢰도 필터: conf ≥ {thr:.2f}, 남은 픽셀 {mask.mean():.0%}, 점 {len(P):,}, 중앙 깊이 {unit:.3f}")
 
-    # 3) 바닥 RANSAC 정렬 (+ 맨해튼 yaw)
+    # 3) 바닥 RANSAC 정렬 (+ 맨해튼 yaw, 대체 스케일 방법용)
     floor = find_floor(P, extr, cfg["floor"], unit)
-    T = floor.T
-    Q = T.apply(P)
-    yaw = manhattan_yaw(Q, unit)
-    T = T.then(Sim3(1.0, rot_y(-yaw), np.zeros(3)))
-    Q = T.apply(P)
-    cam_y = T.apply(camera_centers(extr))[:, 1]
+    T_floor = floor.T                     # VGGT → 바닥 정렬 (+Y 위, 바닥 y=0, VGGT 단위)
+    yaw = manhattan_yaw(T_floor.apply(P), unit)
+    T_yaw = T_floor.then(Sim3(1.0, rot_y(-yaw), np.zeros(3)))
+    Q = T_yaw.apply(P)
+    cam_y = T_yaw.apply(camera_centers(extr))[:, 1]
     log(f"바닥: {floor.method}, 인라이어 {floor.inlier_frac:.1%}, 카메라 아래 방향과 {floor.tilt_deg:.1f}°, "
         f"yaw {np.rad2deg(yaw):+.1f}°, 카메라 높이(단위) 중앙 {np.median(cam_y):.3f}")
 
-    # 4) 스케일 보정: ChArUco → 방 크기 → 촬영 높이 → 배율
+    # 4) 월드 좌표계 + 스케일: ChArUco(interfaces.md 규약) → 방 크기 → 촬영 높이 → 배율
+    #    VGGT 월드(첫 카메라 OpenCV 좌표계) → 월드(glTF, 미터) 변환은 여기서 한 번만 정한다
     tried = []
-    S3 = None
+    T = None
     if not a.no_charuco:
         spec = load_charuco()
-        S3, info = sc.charuco_scale(paths, metas, extr, intr, pred["depth"] * mask, T, spec, cfg["scale"])
+        T, info = sc.charuco_world(paths, metas, extr, intr, pred["depth"] * mask, T_floor, spec, cfg["scale"])
         tried.append(info)
-        log(f"ChArUco: {info}")
-    if S3 is None and a.room_size:
+        log("ChArUco: " + json.dumps(info, ensure_ascii=False, default=float))
+        if T is not None and not info["z_into_room"]:
+            log("경고: 월드 +Z가 방 안쪽을 향하지 않습니다 (보드가 거꾸로 붙었거나 카메라가 보드 뒤쪽). 그대로 진행합니다.")
+    S3 = None
+    if T is None and a.room_size:
         S3, info = sc.room_size_scale(Q, tuple(a.room_size))
         tried.append(info)
     if S3 is None and a.cam_height:
@@ -233,10 +238,11 @@ def main() -> None:
     if S3 is None and a.scale_factor:
         S3, info = sc.factor_scale(Q, a.scale_factor)
         tried.append(info)
-    if S3 is None:
+    if T is None and S3 is None:
         raise SystemExit("스케일 보정 실패: ChArUco 미검출. --room-size W D, --cam-height H, --scale-factor 중 하나를 지정하세요.")
     scale_info = tried[-1]
-    T = T.then(S3)
+    if T is None:
+        T = T_yaw.then(S3)
     log(f"스케일: {scale_info['method']} (배율 {T.s:.4f})")
 
     # 5) TSDF (미터 월드)
@@ -263,6 +269,12 @@ def main() -> None:
     minfo["normals_toward_camera"] = float(np.mean(((near_cam - V) * Nn).sum(1) > 0))
     log(f"정리/간소화: {minfo}")
 
+    # 6b) 바닥 메우기 (바닥 평면 y=0, 방 범위 안의 빈 칸)
+    F_ = np.asarray(mesh.triangles)
+    V, F_, Cs, Nn, finfo = fill_floor(V, F_, Cs, Nn, W_pts, C, cfg["floor_fill"],
+                                      a.fill_floor or cfg["floor_fill"]["mode"])
+    log(f"바닥 메우기: {finfo}")
+
     # 7) 내보내기
     out_dir = shared_dir() / "meshes"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -275,15 +287,15 @@ def main() -> None:
     extras = {"created_at": now.isoformat(timespec="seconds"), "scale_method": scale_info["method"],
               "coordinate_system": "glTF world: right-handed, +Y up, meters, floor y=0"}
     # glTF COLOR_0 는 선형 색공간 → 이미지 sRGB 를 선형으로 변환
-    write_glb(glb, V, np.asarray(mesh.triangles), srgb_to_linear(Cs), Nn, extras=extras)
+    write_glb(glb, V, F_, srgb_to_linear(Cs), Nn, extras=extras)
 
     vsize = cfg["room"]["expected_size_m"] if a.expect_size is None else a.expect_size
     ok, rows, vstats = validate(glb, vsize, cfg["room"]["size_tolerance"], not a.no_size_check)
     for lv, name, msg in rows:
         log(f"  [{lv}] {name}: {msg}")
 
-    origin = ("ChArUco 보드 중심 (보드 +X→월드 +X, 보드 +Y→월드 +Z)" if scale_info["method"] == "charuco"
-              else "바닥 범위(1~99 백분위) 중심, 축은 벽 방향(맨해튼) 정렬")
+    origin = ("보드 중심을 바닥에 내린 점, +X = 보드 +X의 바닥 투영, +Y = 바닥 법선, +Z = X×Y"
+              if scale_info["method"] == "charuco" else "바닥 범위(1~99 백분위) 중심, 축은 벽 방향(맨해튼) 정렬")
     source = a.source
     if source == "auto":
         scans = (shared_dir() / "scans").resolve()
@@ -292,6 +304,8 @@ def main() -> None:
         "file": glb.name,
         "source": source,                      # unity 요청: "real"(사용자 방 사진) / "sample"(예제 이미지)
         "scale_method": scale_info["method"],  # charuco / room-size / camera-height / factor
+        "board_center_height_m": (round(scale_info["board_center_height_m"], 4)
+                                  if scale_info["method"] == "charuco" else None),  # 바닥에서 보드 중심까지 (m)
         "created_at": extras["created_at"],
         "source_images": str(a.images),
         "num_images": len(paths),
@@ -299,7 +313,8 @@ def main() -> None:
         "origin": origin,
         "scale": {**{k: v for k, v in scale_info.items() if not isinstance(v, np.ndarray)}, "factor": T.s},
         "scale_attempts": tried,
-        "triangles": int(len(mesh.triangles)),
+        "triangles": int(len(F_)),
+        "floor_fill": finfo,
         "vertices": int(len(V)),
         "bbox": {"min": V.min(0).round(4).tolist(), "max": V.max(0).round(4).tolist(),
                  "size": (V.max(0) - V.min(0)).round(4).tolist()},
