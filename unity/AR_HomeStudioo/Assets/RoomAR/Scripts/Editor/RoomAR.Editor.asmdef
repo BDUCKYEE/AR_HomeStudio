@@ -1,0 +1,19 @@
+{
+    "name": "RoomAR.Editor",
+    "rootNamespace": "RoomAR.EditorTools",
+    "references": [
+        "RoomAR.Runtime",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
