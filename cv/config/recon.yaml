@@ -1,0 +1,35 @@
+# 방 메시 파이프라인 파라미터 (python -m cv.recon.build_room)
+
+vggt:
+  max_images: 120          # 초과 시 균등 간격으로 추림 (100장 ≈ 21초, 15GB, GPU 0)
+
+conf_filter:
+  drop_percentile: 30      # 장면 전체 depth_conf 하위 N% 제거
+  min_conf: 1.2            # depth_conf 절대 하한 (expp1 활성화 → 최소 1.0)
+  max_rel_grad: 0.04       # |∇depth|/depth 가 이보다 크면 경계(날아다니는 점)로 보고 제거
+
+floor:
+  ransac_dist_rel: 0.012   # RANSAC 거리 임계 = 중앙값 깊이 × 이 값 (스케일 보정 전 단위)
+  max_tilt_deg: 30         # 평균 카메라 아래 방향과 평면 법선 사이 최대 각
+  min_inlier_frac: 0.05    # 평면 후보 최소 인라이어 비율 (수평면 점 대비)
+  max_planes: 10
+
+scale:
+  charuco_min_corners: 6   # 2개 이상 시점에서 삼각측량된 코너 수 하한
+  charuco_max_rms_mm: 15   # 보드 평면 정합 잔차 상한 (넘으면 실패 처리 후 대체 방법)
+
+tsdf:                      # 미터 단위 (스케일 보정 후 적분)
+  voxel_m: 0.02
+  trunc_m: 0.08
+  depth_max_m: 6.0
+  margin_m: 0.3            # 점구름 범위 밖 여유
+  max_resolution: 400      # 정육면체 격자 한 변 최대 복셀 수 (400³ ≈ 2.5GB RAM)
+
+mesh:
+  min_component_tris: 300   # 이보다 작은 떨어진 조각 제거
+  target_triangles: 150000  # quadric 간소화 목표
+  max_triangles: 300000     # validate_mesh 상한
+
+room:
+  expected_size_m: [3.3, 2.5]   # validate_mesh 기본 기대 크기 (가로, 세로)
+  size_tolerance: 0.25          # ±25%

@@ -46,20 +46,28 @@ def load_model(weights: str | None = None, device: str = "cuda"):
     return model.to(device).eval()
 
 
-def load_images(paths: list[Path]) -> torch.Tensor:
+def open_rgb(p: Path) -> Image.Image:
+    """EXIF 회전을 적용한 RGB 이미지 (폰 사진은 EXIF 회전 필수)."""
+    im = Image.open(p)
+    if im.format in ("HEIF", "HEIC") or Path(p).suffix.lower() == ".heic":
+        raise RuntimeError(f"HEIC는 지원하지 않습니다. JPG로 변환해 주세요: {p}")
+    im = ImageOps.exif_transpose(im)
+    if im.mode in ("RGBA", "LA", "P"):
+        im = im.convert("RGBA")
+        bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
+        im = Image.alpha_composite(bg, im)
+    return im.convert("RGB")
+
+
+def load_images(paths: list[Path], return_meta: bool = False):
     """EXIF 회전 적용, 비율 유지, 긴 변 518px, 짧은 변은 14의 배수. 방향이 섞이면 정사각 패딩.
 
-    반환 (S,3,H,W) float [0,1].
+    반환 (S,3,H,W) float [0,1]. return_meta=True면 이미지별 원본→전처리 픽셀 변환
+    meta = {orig_wh, scale(sx,sy), offset(ox,oy), valid(x0,y0,x1,y1)} 리스트도 반환: u' = u*sx + ox.
     """
-    ims = []
-    for p in paths:
-        im = ImageOps.exif_transpose(Image.open(p))
-        if im.mode == "RGBA":
-            bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
-            im = Image.alpha_composite(bg, im)
-        ims.append(im.convert("RGB"))
+    ims = [open_rgb(p) for p in paths]
     landscape = {im.width >= im.height for im in ims}
-    out = []
+    out, metas = [], []
     if len(landscape) == 1:
         # 첫 장 기준 크기로 통일 (같은 폰이면 모두 같은 비율)
         w0, h0 = ims[0].size
@@ -68,15 +76,21 @@ def load_images(paths: list[Path]) -> torch.Tensor:
         size = (VGGT_SIZE, s) if w0 >= h0 else (s, VGGT_SIZE)
         for im in ims:
             out.append(np.asarray(im.resize(size, Image.Resampling.BICUBIC)))
+            metas.append(dict(orig_wh=im.size, scale=(size[0] / im.width, size[1] / im.height),
+                              offset=(0.0, 0.0), valid=(0, 0, size[0], size[1])))
     else:
         for im in ims:
             sc = VGGT_SIZE / max(im.size)
             nw, nh = round(im.width * sc), round(im.height * sc)
+            ox, oy = (VGGT_SIZE - nw) // 2, (VGGT_SIZE - nh) // 2
             canvas = Image.new("RGB", (VGGT_SIZE, VGGT_SIZE), (255, 255, 255))
-            canvas.paste(im.resize((nw, nh), Image.Resampling.BICUBIC), ((VGGT_SIZE - nw) // 2, (VGGT_SIZE - nh) // 2))
+            canvas.paste(im.resize((nw, nh), Image.Resampling.BICUBIC), (ox, oy))
             out.append(np.asarray(canvas))
+            metas.append(dict(orig_wh=im.size, scale=(nw / im.width, nh / im.height),
+                              offset=(float(ox), float(oy)), valid=(ox, oy, ox + nw, oy + nh)))
     arr = np.stack(out).astype(np.float32) / 255.0
-    return torch.from_numpy(arr).permute(0, 3, 1, 2).contiguous()
+    t = torch.from_numpy(arr).permute(0, 3, 1, 2).contiguous()
+    return (t, metas) if return_meta else t
 
 
 @torch.no_grad()
