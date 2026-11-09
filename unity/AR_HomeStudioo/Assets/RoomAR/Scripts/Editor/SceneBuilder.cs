@@ -28,11 +28,50 @@ namespace RoomAR.EditorTools
         public const float RoomH = 2.4f;
         const float WallT = 0.1f;
 
+        public const string RoomMeshScenePath = ScenesDir + "/RoomMesh.unity";
+        public const string VertexColorMatPath = MaterialsDir + "/RoomVertexColor.mat";
+
         [MenuItem("RoomAR/Build All Scenes")]
         public static void BuildAll()
         {
             BuildBoxRoomScene();
-            RegisterBuildScenes();
+            BuildRoomMeshScene();
+            RegisterBuildScenes(RoomMeshScenePath);
+        }
+
+        /// <summary>
+        /// 방 메시 씬: 실행 시 SHARED_DIR/meshes/room_latest.glb를 불러옴 (L 키로 다시 불러오기).
+        /// 메시가 없으면 빈 공간이므로 비상시에는 BoxRoom 씬을 사용합니다.
+        /// </summary>
+        [MenuItem("RoomAR/Build Room Mesh Scene")]
+        public static void BuildRoomMeshScene()
+        {
+            EnsureFolders();
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+            CreateLight();
+            var cam = CreateCamera(new Vector3(0f, 1.6f, -1.0f), new Vector3(20f, 0f, 0f));
+            CreateSandbox(cam);
+
+            var loaderGo = new GameObject("RoomMeshLoader");
+            var loader = loaderGo.AddComponent<RoomAR.RoomMeshLoader>();
+            var so = new SerializedObject(loader);
+            so.FindProperty("vertexColorMaterial").objectReferenceValue = GetVertexColorMaterial();
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            EditorSceneManager.SaveScene(scene, RoomMeshScenePath);
+            Debug.Log($"[RoomAR] Built {RoomMeshScenePath}");
+        }
+
+        public static Material GetVertexColorMaterial()
+        {
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(VertexColorMatPath);
+            if (mat != null) return mat;
+            var shader = Shader.Find("RoomAR/VertexColor");
+            if (shader == null) throw new System.Exception("Shader RoomAR/VertexColor not found (Assets/RoomAR/Shaders/VertexColor.shader)");
+            mat = new Material(shader) { name = "RoomVertexColor" };
+            AssetDatabase.CreateAsset(mat, VertexColorMatPath);
+            return mat;
         }
 
         [MenuItem("RoomAR/Build Box Room Scene (비상용)")]

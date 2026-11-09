@@ -2,7 +2,8 @@
     "name": "RoomAR.Runtime",
     "rootNamespace": "RoomAR",
     "references": [
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "glTFast"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

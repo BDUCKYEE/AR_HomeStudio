@@ -3,7 +3,8 @@
     "rootNamespace": "RoomAR.EditorTools",
     "references": [
         "RoomAR.Runtime",
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "glTFast"
     ],
     "includePlatforms": [
         "Editor"
