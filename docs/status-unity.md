@@ -4,9 +4,9 @@
 
 ## 현재 상태
 
-- 마지막 갱신: 2026-11-10 11:40
-- 단계: A·B단계 완료, 벽 보드 표시 추가 (interfaces.md 2026-11-10 좌표계 반영) → 실제 방 메시(`source: real`) 대기 중
-- 사용 중인 메시: `room_20261110_example-bedroom.glb` (`source: sample`, 바닥 메우기 적용). 보조 바닥(y=0)은 계속 켬
+- 마지막 갱신: 2026-11-10 11:45
+- 단계: **실제 방 메시 검증 완료** (종합 WARN, 크기·바닥·보드 모두 OK) → 에디터에서 시연 확인 단계
+- 사용 중인 메시: `room_20261110_myroom-charuco.glb` (`source: real`, `charuco`, 보드 중심 높이 0.8954m). 보조 바닥(y=0)은 계속 켬 (X쪽 벽 구멍 대비)
 - 환경: Unity 6000.3.28f1, URP 17.3, Input System 1.20.1 (Active Input Handling = Input System Package)
 
 ## READY
@@ -18,6 +18,33 @@
 - READY: cv `room_latest.glb`(예제 메시) 실행 중 로드 + MeshCollider + 정점 색 + 보조 바닥 / `RoomMesh.unity` Play → 화면 왼쪽 위에 메시 정보 표시, Space로 공 → 메시 위에서 튐. **F** 보조 바닥 토글. 배치 테스트: `-executeMethod RoomAR.EditorTools.RoomMeshLoaderSelfTest.RunBatch` (`-quit` 없이) → `PASS` (81개 낙하 중 바닥 뚫림 0, 벽 구멍 탈출 4)
 
 - READY: 벽 ChArUco 보드 위치 표시 / `room_latest.json`에 `board_center_height_m`가 있으면 `RoomMesh` 씬에서 메시 로드 시 자동 생성 (**B** 토글, 화면 안내에 보드 높이 표시). 얇은 사각형: 종이 A3 297×420mm(흰색) + 패턴 `squares_x × squares_y × square_mm`(기본 5×7×50mm, 검정), 보드 +X 빨간 막대, 보드 중심→바닥 원점 노란 수직선, 바닥 원점 십자(파랑 = +Z 방 안쪽). 충돌체 없음. 배치 테스트: `RoomMeshLoaderSelfTest.RunBatch -roomGlb <합성 벽 원점 glb>` → 종이 중심 (0.000, 1.250, 0.004) = 기대 (0, h, 0) → PASS. 보드 정보가 없는 현재 예제 메시에서는 "보드: 위치 정보 없음 (scale_method=camera-height)"으로 표시
+
+- READY: 실제 방 메시 + 보드 표시 / `RoomMesh.unity` Play → `room_20261110_myroom-charuco.glb` 자동 로드, 보드는 벽 (0, 0.895, 0)에 표시. 배치: 검증기 종합 WARN(종료 0), `RoomMeshLoaderSelfTest` PASS (81개 낙하 중 바닥 뚫림 0, X쪽 벽 구멍으로 탈출 2, 보드 종이 중심 (0.000, 0.895, 0.004))
+
+### 실제 방 메시 검증 결과 (2026-11-10 11:32, 배치 모드)
+
+- glb: `room_20261110_myroom-charuco.glb` (사진 81장, `scale_method: charuco`, 보드 20장에서 코너 24/24, rms 2.27mm, `z_into_room: true`)
+- 로딩 0.77s, 메시 1개, 정점 85,243
+
+| 결과 | 항목 | 값 |
+|---|---|---|
+| OK | 삼각형 수 | 153,258 |
+| OK | 정점 색 | COLOR_0 있음 |
+| OK | MeshCollider | 1개 |
+| OK | 수평 긴 변 | 3.50 m (Z 방향, 보드 벽 → 맞은편 벽; 실측 3.3 대비 +6%) |
+| OK | 수평 짧은 변 | 2.73 m (X 방향; 실측 2.5 대비 +9%) |
+| OK | 높이 | 2.44 m (실측 2.4) |
+| OK | 바운딩 박스 (Unity) | min (-1.48, -0.05, -0.01) / max (1.25, 2.39, 3.49) |
+| OK | 바닥 높이 | p1 -0.009 m, p5 -0.003 m, min -0.051 m |
+| OK | 보드 중심 높이 | 0.895 m |
+| OK | 원점 위치 (벽 보드) | x 범위에 0 포함, 메시 −Z 끝 z = −0.01 m (보드 벽) |
+| OK | 보드 벽면 Raycast | 보드 앞 0.5m → −Z 광선이 z = 0.012 m에서 벽에 맞음 |
+| OK | 바닥 Raycast | 79/81 (98%) |
+| WARN | 공 낙하 (메시 단독) | 79개 중 3개 탈출 (보조 바닥 없이) |
+
+**종합: WARN** — 메시만 썼을 때 공 일부가 벽 구멍으로 나가는 것만 경고입니다. 보조 바닥을 켜면 바닥을 뚫는 공은 0개이고, 2개가 ±X 벽 구멍(x ≈ −2.2 / +1.95 지점으로 나감)으로 방 밖에 나갔습니다.
+- 교차 확인: cv json bbox(glTF) x [−1.25, 1.48] → Unity x [−1.48, 1.25] (X 반전), z [−0.01, 3.49]는 그대로입니다. 좌표 규약대로입니다.
+- 참고: 방의 긴 변(3.5m)이 보드 벽에 수직인 Z 방향입니다. 박스 방(BoxRoom, X 3.3 × Z 2.5)과는 축 배치가 다릅니다 (박스 방은 비상용이라 그대로 둠).
 
 ### 새 좌표계 반영 (interfaces.md 2026-11-10)
 
@@ -100,7 +127,8 @@
 - [x] `room_latest.glb` 불러오기 + `MeshCollider` 적용 (코드 완료, 실제 메시 대기)
 - [x] 정점 색 표시용 셰이더 (URP)
 - [x] 실제 `room_latest.glb` 검증 결과 기록 (예제 메시)
-- [ ] 실제 방 사진 메시(`source: real`)로 재검증
+- [x] 실제 방 사진 메시(`source: real`)로 재검증 (11:32, 종합 WARN)
+- [ ] 에디터 Play로 조작/표시 확인 (사용자)
 - [x] 박스 방 버전 비상용으로 유지
 - [ ] 18:00 리허설
 
@@ -130,3 +158,4 @@
 | 2026-11-09 18:00 | B단계 코드: glTFast 6.20.0, EnvConfig/RoomMeshIO/RoomMeshLoader, VertexColor 셰이더, RoomMesh 씬, RoomMeshValidator. 합성 glb로 배치 검증 통과. `room_latest.json` 대기 시작 |
 | 2026-11-09 18:05 | `room_latest.json` 생성 감지 → 예제 bedroom 메시 검증. 바닥 누락 발견 → 보조 바닥(F 토글), 바닥 Raycast/공 낙하 검사, RoomMeshLoaderSelfTest 추가. `source` 필드 우선 판단 |
 | 2026-11-10 11:40 | interfaces.md 새 좌표계(벽 보드) 확인. BoardMarker(보드 위치 표시, B 토글), json 파싱(`RoomMeshInfo`), 검증기 보드 검사 추가. 합성 벽 원점 메시로 배치 테스트 PASS. 실제 방 메시(`source: real`) 대기 시작 |
+| 2026-11-10 11:45 | 11:31 `source: real` 감지 → `room_20261110_myroom-charuco.glb` 배치 검증 WARN(크기·바닥·보드 OK), 로더 테스트 PASS, 보드 (0, 0.895, 0) 표시 확인 |
