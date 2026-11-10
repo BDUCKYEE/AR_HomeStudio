@@ -30,7 +30,7 @@ def detect_charuco(paths: list[Path], metas: list[dict], spec: CharucoSpec) -> d
     det = spec.make_detector()
     obs: dict[int, list] = {}
     for i, (p, m) in enumerate(zip(paths, metas)):
-        g = np.asarray(open_rgb(p).convert("L"))
+        g = np.asarray(open_rgb(p, m.get("rot90", False)).convert("L"))   # VGGT 입력과 같은 방향
         f = min(1.0, DETECT_MAX_SIDE / max(g.shape))
         if f < 1.0:
             g = cv2.resize(g, None, fx=f, fy=f, interpolation=cv2.INTER_AREA)
@@ -53,17 +53,21 @@ def _board_corners_vggt(paths, metas, extr, intr, depth, spec, cfg, info) -> tup
     Pm = [intr[i] @ extr[i] for i in range(len(extr))]
     ids, X, reproj = [], [], []
     for cid, lst in obs.items():
-        if len(lst) < 2:
-            continue
-        Xc = triangulate([Pm[i] for i, _ in lst], [uv for _, uv in lst])
-        errs = []
-        for i, uv in lst:
-            h = Pm[i] @ np.append(Xc, 1)
-            errs.append(np.linalg.norm(h[:2] / h[2] - uv) if h[2] > 0 else np.inf)
-        if np.max(errs) < 3.0:   # VGGT 해상도 기준 px
-            ids.append(cid)
-            X.append(Xc)
-            reproj.append(float(np.mean(errs)))
+        # 재투영 오차가 큰 시점을 하나씩 빼며 다시 삼각측량 (VGGT 해상도 기준 px)
+        lst = list(lst)
+        while len(lst) >= 2:
+            Xc = triangulate([Pm[i] for i, _ in lst], [uv for _, uv in lst])
+            errs = []
+            for i, uv in lst:
+                h = Pm[i] @ np.append(Xc, 1)
+                errs.append(np.linalg.norm(h[:2] / h[2] - uv) if h[2] > 0 else np.inf)
+            k = int(np.argmax(errs))
+            if errs[k] <= cfg["charuco_reproj_px"]:
+                ids.append(cid)
+                X.append(Xc)
+                reproj.append(float(np.mean(errs)))
+                break
+            lst.pop(k)
     info["mode"] = "triangulation"
     if reproj:
         info["reproj_px_mean"] = float(np.mean(reproj))

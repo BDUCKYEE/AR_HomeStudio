@@ -17,6 +17,7 @@ floor:
 scale:
   charuco_min_corners: 6   # 2개 이상 시점에서 삼각측량된 코너 수 하한
   charuco_max_rms_mm: 15   # 보드 평면 정합 잔차 상한 (넘으면 실패 처리 후 대체 방법)
+  charuco_reproj_px: 4.0   # 코너별 삼각측량에서 이보다 큰 재투영 오차(VGGT 해상도 px) 시점은 제외
 
 tsdf:                      # 미터 단위 (스케일 보정 후 적분)
   voxel_m: 0.02

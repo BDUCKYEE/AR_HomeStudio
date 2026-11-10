@@ -4,11 +4,13 @@
 
 ## 현재 상태
 
-- 마지막 갱신: 2026-11-10 01:55
-- 단계: 벽 A3 보드 + 새 월드 좌표계 반영, 바닥 메우기 추가. 사용자 방 사진(`${SHARED_DIR}/scans/`) 대기 중
-- 최신 메시: `room_latest.glb` = **VGGT 예제 침실 8장 (사용자 방 아님, 임시, `source: sample`)**. 116,292 삼각형(바닥 메우기 +10,702), 스케일 = 촬영 높이 1.4m 가정
+- 마지막 갱신: 2026-11-10 11:35
+- 단계: **실제 방 메시 완료** (사용자 사진 81장, ChArUco 스케일). unity 쪽 불러오기/시연 준비 단계
+- 최신 메시: `room_latest.glb` = `room_20261110_myroom-charuco.glb` (`source: real`, `scale_method: charuco`), 153,258 삼각형(바닥 메우기 +3,258 포함), 보드 중심 높이 0.8954m
 
 ## READY
+
+- READY: **실제 방 메시** / `${SHARED_DIR}/meshes/room_latest.glb` (= `room_20261110_myroom-charuco.glb`) + `room_latest.json` / 입력 `scans/20261110` 82장 중 세로 81장(가로 1장 제외), VGGT 17초 11.4GB, 전체 50초. ChArUco: 20시점에서 코너 24/24 삼각측량, 재투영 평균 1.8px, 보드 정합 잔차 2.3mm, 휨 2.2mm, 보드 중심 높이 0.895m, +Z 방 안쪽 확인. validate 전 항목 PASS: 바닥 1백분위 y −0.009m, 높이 2.37m, **수평 범위 3.35×2.60m (실측 3.3×2.5 대비 +2%/+4%, 스케일은 보드만으로 정했으므로 독립 확인)**. 바닥 덮임 53% → 1,629칸 메움
 
 - READY: ChArUco 보드 A4 인쇄본 / `${SHARED_DIR}/charuco/charuco_A4_5x7_35mm_DICT_4X4_50.{pdf,png}`, 파라미터 `cv/config/charuco.yaml` / 생성 이미지 자체 검출 코너 24/24, 칸 간격 840.00px(기대 840), PDF 페이지 210.00×297.00mm
 - READY: cv 가상환경 / `/storage/AI/test/.venv` (`source cv/env.sh`, 캐시는 `/storage/AI/test/.cache`) / `python -m cv.recon.check_env` → torch 2.3.1+cu121, CUDA OK, GPU 2장(RTX 3090 24GB ×2), numpy 1.26.4, Open3D 0.20.0(CUDA 빌드), OpenCV 4.10(cv2.aruco ChArUco OK), trimesh 5.2.0, VGGT import + 가중치 로드 OK. 추가 설치: trimesh, python-dotenv, vggt(-e, --no-deps). 기존 패키지 변경 없음
@@ -74,6 +76,9 @@
 
 ## 알려진 한계
 
+- **VGGT에 세로 사진을 그대로 넣으면 fx/fy를 틀리게 예측** (실측: fx 262 / fy 346, EXIF 참값 344 → 보드 재투영 오차 최대 45px). 이제 전부 세로면 반시계 90° 돌려 넣음(`load_images(rotate_portrait=True)`): fx≈fy≈344, 재투영 중앙 1.8px. 바닥 RANSAC의 중력 힌트도 회전에 맞춰 카메라 +x 사용
+- 가로/세로가 섞이면 다수 방향만 사용 (`--keep-mixed-orientation`으로 끌 수 있음, 그 경우 정사각 패딩)
+
 - Open3D 0.20(현재 venv)의 `ScalableTSDFVolume`/`t.VoxelBlockGrid`가 빈 메시를 냄(합성 평면으로도 재현) → `UniformTSDFVolume`(정육면체 격자, 최대 400³) 사용. 방 크기에서는 문제 없음
 - ChArUco 스케일: 합성 시험에서 −0.3~0.4% 치우침(3.3m에 약 1cm). 코너 검출 단계에서 발생, 원인 미확정
 - 벽 보드가 휘어 있으면(폼보드 없이 부착) 정합 잔차/휨이 커짐 → `room_latest.json` `scale.rms_mm`, `scale.out_of_plane_rms_mm`로 확인. 15mm 넘으면 ChArUco 실패 처리 후 대체 방법
@@ -92,6 +97,7 @@
 | 2026-11-09 | 상태 파일 생성 |
 | 2026-11-09 17:45 | ChArUco 5×7, DICT_4X4_50, 칸 35mm/마커 26mm, A4 PDF/PNG 생성 (`python -m cv.calib.make_charuco`) |
 | 2026-11-09 18:05 | 환경 확인(check_env) 통과, trimesh/python-dotenv/vggt 설치, VGGT N=1~200 메모리/시간 측정 |
+| 2026-11-10 11:35 | 사용자 사진(scans/20261110)으로 실제 방 메시 생성 → room_latest. 세로 사진 회전 입력, 코너별 재투영 이상치 제거(4px) 추가 |
 | 2026-11-10 01:55 | 벽 A3 보드 반영(charuco.yaml 50/37mm 실측), 새 월드 좌표계(charuco_world, 3D 정합) + 합성 시험, 바닥 메우기, A3 검출 거리 시험, interfaces.md 갱신. VGGT 가중치 → `/storage/AI/cache/huggingface`(sha256 확인), `.env` VGGT_WEIGHTS 설정, HF_HOME(cv/env.sh) 변경, `.env.example` IP 되돌림, 이전 시험 메시 → `shared/archive/` |
 | 2026-11-09 18:25 | unity 요청 반영: room_latest.json에 source/scale_method 추가, 예제 메시 재생성 (`room_20261109_example-bedroom-180624.glb`) |
 | 2026-11-09 18:20 | cv/recon 파이프라인(build_room, validate_mesh, glb, scale, geometry) 완성. 바닥 RANSAC을 수평면 점만으로 바꿔 침대 윗면을 바닥으로 잡던 문제 수정. 예제 침실로 room_latest 생성 |

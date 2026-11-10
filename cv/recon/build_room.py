@@ -173,16 +173,21 @@ def main() -> None:
     ap.add_argument("--max-images", type=int)
     ap.add_argument("--expect-size", type=float, nargs=2, help="검증 시 기대 방 크기 (기본 recon.yaml)")
     ap.add_argument("--no-size-check", action="store_true")
+    ap.add_argument("--keep-mixed-orientation", action="store_true", help="가로/세로 섞여도 모두 사용 (정사각 패딩)")
     ap.add_argument("--fill-floor", choices=["auto", "on", "off"], help="바닥 메우기 (기본 recon.yaml floor_fill.mode)")
     ap.add_argument("--source", choices=["auto", "real", "sample"], default="auto",
                     help="room_latest.json 의 source. auto: 입력이 ${SHARED_DIR}/scans/ 아래면 real, 아니면 sample")
     a = ap.parse_args()
 
-    from cv.recon.vggt_infer import list_images, load_images, load_model, run
+    from cv.recon.vggt_infer import list_images, load_images, load_model, majority_orientation, run
 
     cfg = load_yaml("recon.yaml")
     t_start = time.time()
     paths = list_images(a.images)
+    if not a.keep_mixed_orientation:
+        paths, dropped = majority_orientation(paths)
+        if dropped:
+            log(f"가로/세로가 섞여 소수 방향 {len(dropped)}장 제외: {[p.name for p in dropped]} (--keep-mixed-orientation 로 유지)")
     if len(paths) < 2:
         raise SystemExit(f"이미지가 2장 미만입니다: {a.images}")
     mx = a.max_images or cfg["vggt"]["max_images"]
@@ -208,7 +213,10 @@ def main() -> None:
     log(f"신뢰도 필터: conf ≥ {thr:.2f}, 남은 픽셀 {mask.mean():.0%}, 점 {len(P):,}, 중앙 깊이 {unit:.3f}")
 
     # 3) 바닥 RANSAC 정렬 (+ 맨해튼 yaw, 대체 스케일 방법용)
-    floor = find_floor(P, extr, cfg["floor"], unit)
+    down_axis = 0 if metas[0].get("rot90") else 1     # 세로 사진을 가로로 돌렸으면 원래 '아래' = 카메라 +x
+    if down_axis == 0:
+        log("세로 사진 → 반시계 90° 회전해 VGGT 입력 (세로 입력 시 fx/fy 예측이 어긋남)")
+    floor = find_floor(P, extr, cfg["floor"], unit, down_axis=down_axis)
     T_floor = floor.T                     # VGGT → 바닥 정렬 (+Y 위, 바닥 y=0, VGGT 단위)
     yaw = manhattan_yaw(T_floor.apply(P), unit)
     T_yaw = T_floor.then(Sim3(1.0, rot_y(-yaw), np.zeros(3)))

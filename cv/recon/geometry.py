@@ -65,7 +65,7 @@ class FloorResult:
     candidates: list
 
 
-def find_floor(P: np.ndarray, extr: np.ndarray, cfg: dict, unit: float, seed: int = 0) -> FloorResult:
+def find_floor(P: np.ndarray, extr: np.ndarray, cfg: dict, unit: float, seed: int = 0, down_axis: int = 1) -> FloorResult:
     """바닥 평면 RANSAC.
 
     P: VGGT 월드 점 (N,3). unit: 장면 단위(중앙값 깊이). 카메라 y축(아래)의 평균을 중력 방향 힌트로 쓴다.
@@ -76,7 +76,8 @@ def find_floor(P: np.ndarray, extr: np.ndarray, cfg: dict, unit: float, seed: in
     if len(P) > 200_000:
         P = P[rng.choice(len(P), 200_000, replace=False)]
     C = camera_centers(extr)
-    down = extr[:, 1, :3].mean(0)      # 카메라 +y(아래)의 월드 방향 = R의 2번째 행
+    # 사진의 아래 방향 = 카메라 +y (R의 2번째 행). 세로 사진을 가로로 돌려 넣었으면 카메라 +x (down_axis=0)
+    down = extr[:, down_axis, :3].mean(0)
     down /= np.linalg.norm(down)
     cos_tilt = np.cos(np.deg2rad(cfg["max_tilt_deg"]))
     # 수평면 점만 RANSAC (벽이 반복 선택되는 것 방지): 법선이 아래 방향과 max_tilt 이내
@@ -113,7 +114,8 @@ def find_floor(P: np.ndarray, extr: np.ndarray, cfg: dict, unit: float, seed: in
         d = -float(np.percentile(h, 2))
         frac, method = 0.0, "lowest-points"
     # 회전: 행 = 새 축 (X, Y=n, Z=X×Y). X는 첫 카메라 x축을 바닥에 투영
-    x0 = extr[0, 0, :3] - (extr[0, 0, :3] @ n) * n
+    h = extr[0, 1 - down_axis, :3]                    # 첫 카메라의 수평 축 (down_axis 가 아닌 쪽)
+    x0 = h - (h @ n) * n
     x0 /= np.linalg.norm(x0)
     z0 = np.cross(x0, n)
     R = np.stack([x0, n, z0])

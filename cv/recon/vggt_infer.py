@@ -23,6 +23,21 @@ def list_images(folder: Path) -> list[Path]:
     return sorted(p for p in Path(folder).iterdir() if p.suffix in IMG_EXT)
 
 
+def oriented_size(p: Path) -> tuple[int, int]:
+    """EXIF 회전을 반영한 (가로, 세로), 픽셀 디코딩 없이."""
+    im = Image.open(p)
+    w, h = im.size
+    return (h, w) if im.getexif().get(274) in (5, 6, 7, 8) else (w, h)
+
+
+def majority_orientation(paths: list[Path]) -> tuple[list[Path], list[Path]]:
+    """가로/세로가 섞이면 다수 방향만 남긴다 (섞이면 전부 정사각 패딩돼 해상도 손해). 반환 (남긴 것, 뺀 것)."""
+    land = [oriented_size(p)[0] >= oriented_size(p)[1] for p in paths]
+    keep_land = sum(land) * 2 >= len(land)
+    keep = [p for p, l in zip(paths, land) if l == keep_land]
+    return keep, [p for p, l in zip(paths, land) if l != keep_land]
+
+
 def resolve_weights(weights: str | None = None) -> Path:
     w = Path(weights or env("VGGT_WEIGHTS"))
     if w.is_dir():
@@ -46,8 +61,9 @@ def load_model(weights: str | None = None, device: str = "cuda"):
     return model.to(device).eval()
 
 
-def open_rgb(p: Path) -> Image.Image:
-    """EXIF 회전을 적용한 RGB 이미지 (폰 사진은 EXIF 회전 필수)."""
+def open_rgb(p: Path, rot90: bool = False) -> Image.Image:
+    """EXIF 회전을 적용한 RGB 이미지 (폰 사진은 EXIF 회전 필수). rot90=True면 추가로 반시계 90° 회전
+    (세로 사진 → 가로. 원래 아래(+v) 방향이 회전 후 카메라 +x(오른쪽)가 된다)."""
     im = Image.open(p)
     if im.format in ("HEIF", "HEIC") or Path(p).suffix.lower() == ".heic":
         raise RuntimeError(f"HEIC는 지원하지 않습니다. JPG로 변환해 주세요: {p}")
@@ -56,16 +72,22 @@ def open_rgb(p: Path) -> Image.Image:
         im = im.convert("RGBA")
         bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
         im = Image.alpha_composite(bg, im)
-    return im.convert("RGB")
+    im = im.convert("RGB")
+    return im.transpose(Image.Transpose.ROTATE_90) if rot90 else im
 
 
-def load_images(paths: list[Path], return_meta: bool = False):
+def load_images(paths: list[Path], return_meta: bool = False, rotate_portrait: bool = True):
     """EXIF 회전 적용, 비율 유지, 긴 변 518px, 짧은 변은 14의 배수. 방향이 섞이면 정사각 패딩.
 
     반환 (S,3,H,W) float [0,1]. return_meta=True면 이미지별 원본→전처리 픽셀 변환
-    meta = {orig_wh, scale(sx,sy), offset(ox,oy), valid(x0,y0,x1,y1)} 리스트도 반환: u' = u*sx + ox.
+    meta = {orig_wh, scale(sx,sy), offset(ox,oy), valid(x0,y0,x1,y1), rot90} 리스트도 반환: u' = u*sx + ox
+    (u는 open_rgb(p, rot90) 이미지 기준 픽셀).
+
+    rotate_portrait: 전부 세로 사진이면 가로로 돌려 넣는다. VGGT는 세로 입력에서 fov_w ≈ fov_h 로 예측해
+    fx/fy가 크게 어긋나고(실측 fx 262 vs fy 346, 참값 344) 시점 간 재투영 오차가 수십 px이 됨.
     """
-    ims = [open_rgb(p) for p in paths]
+    rot = bool(rotate_portrait) and all(oriented_size(p)[0] < oriented_size(p)[1] for p in paths)
+    ims = [open_rgb(p, rot) for p in paths]
     landscape = {im.width >= im.height for im in ims}
     out, metas = [], []
     if len(landscape) == 1:
@@ -77,7 +99,7 @@ def load_images(paths: list[Path], return_meta: bool = False):
         for im in ims:
             out.append(np.asarray(im.resize(size, Image.Resampling.BICUBIC)))
             metas.append(dict(orig_wh=im.size, scale=(size[0] / im.width, size[1] / im.height),
-                              offset=(0.0, 0.0), valid=(0, 0, size[0], size[1])))
+                              offset=(0.0, 0.0), valid=(0, 0, size[0], size[1]), rot90=rot))
     else:
         for im in ims:
             sc = VGGT_SIZE / max(im.size)
@@ -87,7 +109,7 @@ def load_images(paths: list[Path], return_meta: bool = False):
             canvas.paste(im.resize((nw, nh), Image.Resampling.BICUBIC), (ox, oy))
             out.append(np.asarray(canvas))
             metas.append(dict(orig_wh=im.size, scale=(nw / im.width, nh / im.height),
-                              offset=(float(ox), float(oy)), valid=(ox, oy, ox + nw, oy + nh)))
+                              offset=(float(ox), float(oy)), valid=(ox, oy, ox + nw, oy + nh), rot90=rot))
     arr = np.stack(out).astype(np.float32) / 255.0
     t = torch.from_numpy(arr).permute(0, 3, 1, 2).contiguous()
     return (t, metas) if return_meta else t
