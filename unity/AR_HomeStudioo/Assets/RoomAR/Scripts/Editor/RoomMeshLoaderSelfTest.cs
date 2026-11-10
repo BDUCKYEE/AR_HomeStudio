@@ -66,6 +66,11 @@ namespace RoomAR.EditorTools
             }
             else Debug.Log($"[RoomAR][LoaderTest] board: 없음 ({marker?.Summary})");
 
+            var camPos = Camera.main != null ? Camera.main.transform.position : Vector3.negativeInfinity;
+            var cb = loader.Current.Stats.WorldBounds;
+            bool camOk = camPos.x > cb.min.x && camPos.x < cb.max.x && camPos.z > cb.min.z && camPos.z < cb.max.z;
+            Debug.Log($"[RoomAR][LoaderTest] camera {camPos:F2} forward {Camera.main?.transform.forward:F2} → 방 안 {(camOk ? "OK" : "FAIL")}");
+
             var root = loader.Current.Root;
             var mr = root.GetComponentInChildren<MeshRenderer>();
             bool matOk = mr != null && mr.sharedMaterial != null && mr.sharedMaterial.shader.name == "RoomAR/VertexColor";
@@ -112,7 +117,7 @@ namespace RoomAR.EditorTools
             Physics.simulationMode = prevMode;
             Debug.Log($"[RoomAR][LoaderTest] 보조 바닥 켜짐: {balls.Count}개 중 바닥 뚫림 {fell}개");
 
-            bool ok = matOk && colliders > 0 && fell == 0 && boardOk;
+            bool ok = matOk && colliders > 0 && fell == 0 && boardOk && camOk;
             Debug.Log(ok ? "[RoomAR][LoaderTest] PASS" : "[RoomAR][LoaderTest] FAIL");
             EditorSceneManager.OpenScene(SceneBuilder.RoomMeshScenePath, OpenSceneMode.Single); // 저장하지 않고 버림
             return ok ? 0 : 1;

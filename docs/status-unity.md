@@ -158,4 +158,5 @@
 | 2026-11-09 18:00 | B단계 코드: glTFast 6.20.0, EnvConfig/RoomMeshIO/RoomMeshLoader, VertexColor 셰이더, RoomMesh 씬, RoomMeshValidator. 합성 glb로 배치 검증 통과. `room_latest.json` 대기 시작 |
 | 2026-11-09 18:05 | `room_latest.json` 생성 감지 → 예제 bedroom 메시 검증. 바닥 누락 발견 → 보조 바닥(F 토글), 바닥 Raycast/공 낙하 검사, RoomMeshLoaderSelfTest 추가. `source` 필드 우선 판단 |
 | 2026-11-10 11:40 | interfaces.md 새 좌표계(벽 보드) 확인. BoardMarker(보드 위치 표시, B 토글), json 파싱(`RoomMeshInfo`), 검증기 보드 검사 추가. 합성 벽 원점 메시로 배치 테스트 PASS. 실제 방 메시(`source: real`) 대기 시작 |
+| 2026-11-10 11:50 | 시작 카메라 보정: 새 원점에서는 씬 기본 카메라(z=−1)가 보드 벽 밖 → 첫 로드 때 범위 밖이면 방 안쪽 끝 (−0.12, 1.5, 2.89)에서 보드 벽을 바라보게 이동. 로더 테스트 PASS |
 | 2026-11-10 11:45 | 11:31 `source: real` 감지 → `room_20261110_myroom-charuco.glb` 배치 검증 WARN(크기·바닥·보드 OK), 로더 테스트 PASS, 보드 (0, 0.895, 0) 표시 확인 |

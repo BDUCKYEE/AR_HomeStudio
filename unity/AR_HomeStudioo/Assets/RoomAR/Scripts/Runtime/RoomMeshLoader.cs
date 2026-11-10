@@ -58,6 +58,24 @@ namespace RoomAR
             safetyFloorCol.enabled = safetyFloor;
         }
 
+        /// <summary>
+        /// 카메라가 메시 범위 밖이면 방 안쪽 끝(+Z 쪽, 벽에서 0.6m)·눈높이 1.5m에 두고 보드 벽(-Z)을 바라보게 합니다.
+        /// (원점이 벽 보드 아래라 씬의 기본 카메라 z=-1은 벽 밖)
+        /// </summary>
+        public static void PlaceCameraInside(Bounds b)
+        {
+            var cam = Camera.main;
+            if (cam == null) return;
+            var p = cam.transform.position;
+            bool inside = p.x > b.min.x && p.x < b.max.x && p.z > b.min.z && p.z < b.max.z && p.y > 0f && p.y < b.max.y;
+            if (inside) return;
+            float z = Mathf.Max(b.center.z, b.max.z - 0.6f);
+            cam.transform.SetPositionAndRotation(new Vector3(b.center.x, Mathf.Min(1.5f, b.max.y - 0.2f), z),
+                                                 Quaternion.LookRotation(new Vector3(0f, 0.9f, 0f) - new Vector3(b.center.x, 1.5f, z)));
+            var fly = cam.GetComponent<FlyCamera>();
+            if (fly != null) { fly.enabled = false; fly.enabled = true; } // yaw/pitch 재설정 (OnEnable)
+        }
+
         void Start()
         {
             if (vertexColorMaterial == null)
@@ -101,9 +119,11 @@ namespace RoomAR
                     Debug.LogWarning($"[RoomAR] {status}");
                     return;
                 }
+                bool first = current == null;
                 current?.Dispose();
                 current = res;
                 UpdateSafetyFloor();
+                if (first) PlaceCameraInside(res.Stats.WorldBounds);
                 loadedWriteTime = File.GetLastWriteTime(path);
                 Info = RoomMeshIO.ParseInfo(RoomMeshIO.ReadSiblingJson(path));
                 if (boardMarker == null) boardMarker = GetComponent<BoardMarker>();
