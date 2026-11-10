@@ -21,8 +21,12 @@ namespace RoomAR
         [Tooltip("메시 바닥에 구멍이 많을 때 공이 빠지지 않도록 y=0에 보이지 않는 바닥 충돌체를 둡니다 (규약: 바닥 높이 0). F 키로 토글.")]
         [SerializeField] bool safetyFloor = true;
 
+        [Tooltip("room_latest.json에 board_center_height_m가 있으면 벽 보드 위치를 얇은 사각형으로 표시. B 키로 토글.")]
+        [SerializeField] BoardMarker boardMarker;
+
         RoomMeshIO.LoadResult current;
         BoxCollider safetyFloorCol;
+        public RoomMeshInfo Info { get; private set; }
         bool loading;
         string status = "메시: 아직 불러오지 않음";
         DateTime loadedWriteTime;
@@ -35,7 +39,8 @@ namespace RoomAR
         void OnEnable() => SandboxController.ExtraHelpLines.Add(HelpLine);
         void OnDisable() => SandboxController.ExtraHelpLines.Remove(HelpLine);
 
-        string HelpLine() => $"L 메시 다시 불러오기 · V 메시 표시 · F 보조 바닥 ({(safetyFloor ? "켜짐" : "꺼짐")})\n{status}";
+        string HelpLine() => $"L 메시 다시 불러오기 · V 메시 표시 · F 보조 바닥 ({(safetyFloor ? "켜짐" : "꺼짐")}) · B 보드 표시\n{status}" +
+                             (boardMarker != null ? $"\n{boardMarker.Summary}" : "");
 
         void UpdateSafetyFloor()
         {
@@ -70,6 +75,7 @@ namespace RoomAR
             if (kb == null) return;
             if (kb.lKey.wasPressedThisFrame) Reload();
             if (kb.fKey.wasPressedThisFrame) { safetyFloor = !safetyFloor; UpdateSafetyFloor(); }
+            if (kb.bKey.wasPressedThisFrame && boardMarker != null) boardMarker.SetVisible(!boardMarker.Visible);
             if (kb.vKey.wasPressedThisFrame && current?.Root != null)
                 foreach (var r in current.Root.GetComponentsInChildren<Renderer>(true)) r.enabled = !r.enabled;
         }
@@ -99,7 +105,11 @@ namespace RoomAR
                 current = res;
                 UpdateSafetyFloor();
                 loadedWriteTime = File.GetLastWriteTime(path);
-                string sample = RoomMeshIO.IsSampleMesh(RoomMeshIO.ReadLatestJson()) ? " · 예제 이미지 메시" : "";
+                Info = RoomMeshIO.ParseInfo(RoomMeshIO.ReadSiblingJson(path));
+                if (boardMarker == null) boardMarker = GetComponent<BoardMarker>();
+                if (boardMarker == null) boardMarker = gameObject.AddComponent<BoardMarker>();
+                boardMarker.Apply(Info);
+                string sample = Info.IsSample ? " · 예제 이미지 메시" : Info.Source == "real" ? " · 실제 방" : "";
                 status = $"메시: {Path.GetFileName(path)} ({loadedWriteTime:HH:mm:ss}){sample} · {Time.realtimeSinceStartup - t0:F1}s\n{res.Stats}";
                 Debug.Log($"[RoomAR] {status}");
             }

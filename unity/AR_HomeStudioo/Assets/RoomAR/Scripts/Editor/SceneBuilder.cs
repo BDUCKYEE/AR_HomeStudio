@@ -57,10 +57,26 @@ namespace RoomAR.EditorTools
             var loader = loaderGo.AddComponent<RoomAR.RoomMeshLoader>();
             var so = new SerializedObject(loader);
             so.FindProperty("vertexColorMaterial").objectReferenceValue = GetVertexColorMaterial();
+
+            var marker = loaderGo.AddComponent<RoomAR.BoardMarker>();
+            var mso = new SerializedObject(marker);
+            mso.FindProperty("material").objectReferenceValue = GetUnlitMaterial("BoardMarker");
+            mso.ApplyModifiedPropertiesWithoutUndo();
+            so.FindProperty("boardMarker").objectReferenceValue = marker;
             so.ApplyModifiedPropertiesWithoutUndo();
 
             EditorSceneManager.SaveScene(scene, RoomMeshScenePath);
             Debug.Log($"[RoomAR] Built {RoomMeshScenePath}");
+        }
+
+        public static Material GetUnlitMaterial(string name)
+        {
+            string path = $"{MaterialsDir}/{name}.mat";
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (mat != null) return mat;
+            mat = new Material(Shader.Find("Universal Render Pipeline/Unlit")) { name = name };
+            AssetDatabase.CreateAsset(mat, path);
+            return mat;
         }
 
         public static Material GetVertexColorMaterial()

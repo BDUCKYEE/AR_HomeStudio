@@ -136,6 +136,60 @@ namespace RoomAR
         }
 
         static readonly Regex SourceField = new(@"""source""\s*:\s*""([^""]*)""", RegexOptions.IgnoreCase);
+
+        /// <summary>room_latest.json에서 Unity가 쓰는 필드만 뽑습니다 (interfaces.md 2절). 없는 값은 null.</summary>
+        public static RoomMeshInfo ParseInfo(string json)
+        {
+            var info = new RoomMeshInfo { Raw = json };
+            if (string.IsNullOrEmpty(json)) return info;
+            info.Source = Str(json, "source");
+            info.ScaleMethod = Str(json, "scale_method");
+            info.File = Str(json, "file");
+            info.BoardCenterHeightM = Num(json, "board_center_height_m");
+            info.SquareMm = Num(json, "square_mm");
+            info.SquaresX = Num(json, "squares_x");
+            info.SquaresY = Num(json, "squares_y");
+            var z = Regex.Match(json, @"""z_into_room""\s*:\s*(true|false)", RegexOptions.IgnoreCase);
+            if (z.Success) info.ZIntoRoom = z.Groups[1].Value.ToLowerInvariant() == "true";
+            info.IsSample = IsSampleMesh(json);
+            return info;
+        }
+
+        static string Str(string json, string key)
+        {
+            var m = Regex.Match(json, $@"""{Regex.Escape(key)}""\s*:\s*""([^""]*)""");
+            return m.Success ? m.Groups[1].Value : null;
+        }
+
+        static float? Num(string json, string key)
+        {
+            var m = Regex.Match(json, $@"""{Regex.Escape(key)}""\s*:\s*(null|-?[0-9.]+(?:[eE][-+]?[0-9]+)?)");
+            if (!m.Success || m.Groups[1].Value == "null") return null;
+            return float.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
+        }
+
+        /// <summary>glb 옆의 같은 이름 .json (room_latest.glb → room_latest.json).</summary>
+        public static string ReadSiblingJson(string glbPath)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(glbPath)) return null;
+                string p = Path.ChangeExtension(glbPath, ".json");
+                return File.Exists(p) ? File.ReadAllText(p) : null;
+            }
+            catch { return null; }
+        }
+    }
+
+    public class RoomMeshInfo
+    {
+        public string Raw, Source, ScaleMethod, File;
+        public bool IsSample;
+        /// <summary>바닥에서 벽 보드 중심까지 높이 (m). charuco 스케일이 아니면 null.</summary>
+        public float? BoardCenterHeightM;
+        public float? SquareMm, SquaresX, SquaresY;
+        public bool? ZIntoRoom;
     }
 
     /// <summary>인스턴스화된 메시의 월드(Unity) 좌표 통계.</summary>

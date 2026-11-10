@@ -4,9 +4,9 @@
 
 ## 현재 상태
 
-- 마지막 갱신: 2026-11-09 18:15
-- 단계: A단계 완료, B단계 완료 (cv 예제 메시로 실제 로드/검증까지)
-- 사용 중인 메시: `room_20261109_example-bedroom-180624.glb` (`source: sample`, 예제 이미지 8장). 바닥과 벽 일부가 비어 있어 보조 바닥(y=0)을 켠 상태로 사용
+- 마지막 갱신: 2026-11-10 11:40
+- 단계: A·B단계 완료, 벽 보드 표시 추가 (interfaces.md 2026-11-10 좌표계 반영) → 실제 방 메시(`source: real`) 대기 중
+- 사용 중인 메시: `room_20261110_example-bedroom.glb` (`source: sample`, 바닥 메우기 적용). 보조 바닥(y=0)은 계속 켬
 - 환경: Unity 6000.3.28f1, URP 17.3, Input System 1.20.1 (Active Input Handling = Input System Package)
 
 ## READY
@@ -16,6 +16,21 @@
 - READY: 방 메시 런타임 로더 + 정점 색 셰이더 + 검증기 (메시 없이 준비 완료) / `RoomMesh.unity` 씬 Play → `SHARED_DIR/meshes/room_latest.glb` 자동 로드, **L** 다시 불러오기, **V** 메시 표시 토글. 검증: 메뉴 **RoomAR > Validate room_latest.glb** 또는 배치 `-executeMethod RoomAR.EditorTools.RoomMeshValidator.ValidateBatch [-roomGlb <path>]` (`-quit` 없이 실행, 보고서 `unity/AR_HomeStudioo/Logs/room_mesh_validation.md`). 합성 glb(3.3×2.5×2.4m, 정점 색)로 배치 검증 OK, 반 크기 + `source: sample_images` json → 크기 WARN/종료 0, json 없음 → 크기 FAIL/종료 1 확인
 
 - READY: cv `room_latest.glb`(예제 메시) 실행 중 로드 + MeshCollider + 정점 색 + 보조 바닥 / `RoomMesh.unity` Play → 화면 왼쪽 위에 메시 정보 표시, Space로 공 → 메시 위에서 튐. **F** 보조 바닥 토글. 배치 테스트: `-executeMethod RoomAR.EditorTools.RoomMeshLoaderSelfTest.RunBatch` (`-quit` 없이) → `PASS` (81개 낙하 중 바닥 뚫림 0, 벽 구멍 탈출 4)
+
+- READY: 벽 ChArUco 보드 위치 표시 / `room_latest.json`에 `board_center_height_m`가 있으면 `RoomMesh` 씬에서 메시 로드 시 자동 생성 (**B** 토글, 화면 안내에 보드 높이 표시). 얇은 사각형: 종이 A3 297×420mm(흰색) + 패턴 `squares_x × squares_y × square_mm`(기본 5×7×50mm, 검정), 보드 +X 빨간 막대, 보드 중심→바닥 원점 노란 수직선, 바닥 원점 십자(파랑 = +Z 방 안쪽). 충돌체 없음. 배치 테스트: `RoomMeshLoaderSelfTest.RunBatch -roomGlb <합성 벽 원점 glb>` → 종이 중심 (0.000, 1.250, 0.004) = 기대 (0, h, 0) → PASS. 보드 정보가 없는 현재 예제 메시에서는 "보드: 위치 정보 없음 (scale_method=camera-height)"으로 표시
+
+### 새 좌표계 반영 (interfaces.md 2026-11-10)
+
+- 원점 = 벽 보드 중심의 바닥 투영, +Y = 바닥 법선, +Z = 벽 → 방 안쪽. glTF 월드에서 보드 중심은 (0, h, 0)이고 보드 면은 XY 평면입니다.
+- Unity 변환은 glTFast와 같이 x → −x만 합니다. 보드 중심과 +Z는 그대로이고, 보드 +X(인쇄물 오른쪽)는 Unity −X입니다. 빨간 막대가 화면에서 보드 오른쪽에 보이면 정상입니다 (방 안쪽에서 보드를 바라볼 때).
+- 로더와 보조 바닥은 바꾸지 않았습니다 (바닥 y=0, +Y 위 규약 동일).
+- 검증기: 보드 높이가 있으면 "원점이 메시 범위 안" 대신 다음을 검사합니다.
+  - 보드 높이가 0.2m ~ min(2.3m, 메시 높이) 범위인지
+  - 메시 x 범위에 0이 들어가고, 메시 −Z 끝이 z≈0(±0.3m)인지 (보드가 붙은 벽)
+  - 보드 앞 0.5m에서 −Z로 쏜 Raycast가 |z| < 0.1m에서 벽 메시에 맞는지
+  - json의 `z_into_room=false`이면 경고
+  - 합성 벽 원점 메시(+`source: real`, `charuco`, h=1.25)로 모두 OK 확인
+- 현재 예제 메시 재검증 (11:35): 바닥 메우기 덕분에 바닥 Raycast 9% → 98%, 메시만으로 공 낙하는 FAIL → WARN (79개 중 6개가 벽 구멍으로 탈출). 크기는 WARN(예제). 종합 WARN
 
 ### room_latest.glb 검증 결과 (2026-11-09 18:12, 배치 모드)
 
@@ -68,7 +83,7 @@
 | 왼쪽 클릭 | 커서 위치로 Raycast → 맞은 Rigidbody에 `AddForceAtPosition` (충격량 2 N·s) |
 | `[` / `]` | 공 탄성(PhysicsMaterial.bounciness) −/+ 0.1 |
 | C / R | 공 모두 제거 / 씬 초기화 |
-| L / V / F | (RoomMesh 씬) 메시 다시 불러오기 / 메시 표시 토글 / 보조 바닥 토글 |
+| L / V / F / B | (RoomMesh 씬) 메시 다시 불러오기 / 메시 표시 토글 / 보조 바닥 토글 / 보드 표시 토글 |
 
 ### 박스 방 구성
 
@@ -114,3 +129,4 @@
 | 2026-11-09 18:00 | git pull → status-cv "최신 메시: 없음", `Z:\meshes` 없음 → B단계 중 메시 없이 가능한 부분 진행 |
 | 2026-11-09 18:00 | B단계 코드: glTFast 6.20.0, EnvConfig/RoomMeshIO/RoomMeshLoader, VertexColor 셰이더, RoomMesh 씬, RoomMeshValidator. 합성 glb로 배치 검증 통과. `room_latest.json` 대기 시작 |
 | 2026-11-09 18:05 | `room_latest.json` 생성 감지 → 예제 bedroom 메시 검증. 바닥 누락 발견 → 보조 바닥(F 토글), 바닥 Raycast/공 낙하 검사, RoomMeshLoaderSelfTest 추가. `source` 필드 우선 판단 |
+| 2026-11-10 11:40 | interfaces.md 새 좌표계(벽 보드) 확인. BoardMarker(보드 위치 표시, B 토글), json 파싱(`RoomMeshInfo`), 검증기 보드 검사 추가. 합성 벽 원점 메시로 배치 테스트 PASS. 실제 방 메시(`source: real`) 대기 시작 |

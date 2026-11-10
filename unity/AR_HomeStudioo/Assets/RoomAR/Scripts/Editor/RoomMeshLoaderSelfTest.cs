@@ -38,9 +38,33 @@ namespace RoomAR.EditorTools
             var loader = Object.FindFirstObjectByType<RoomAR.RoomMeshLoader>();
             if (loader == null) { Debug.LogError("[RoomAR][LoaderTest] RoomMeshLoader 없음"); return 2; }
 
+            // -roomGlb <path> 로 다른 glb 지정 가능 (옆의 같은 이름 .json도 함께 읽음)
+            var args = System.Environment.GetCommandLineArgs();
+            int ai = System.Array.IndexOf(args, "-roomGlb");
+            if (ai >= 0 && ai + 1 < args.Length)
+            {
+                var lso = new SerializedObject(loader);
+                lso.FindProperty("overridePath").stringValue = args[ai + 1];
+                lso.ApplyModifiedPropertiesWithoutUndo();
+            }
+
             await loader.ReloadAsync();
             Debug.Log($"[RoomAR][LoaderTest] status: {loader.Status}");
             if (loader.Current == null || !loader.Current.Ok) return 2;
+
+            // 보드 표시: json에 board_center_height_m가 있으면 (0, h, ~0)에 있어야 함
+            bool boardOk = true;
+            var marker = loader.GetComponent<RoomAR.BoardMarker>();
+            float? bh = loader.Info?.BoardCenterHeightM;
+            if (bh != null)
+            {
+                var paper = marker != null && marker.Root != null ? marker.Root.Find("Paper") : null;
+                var r = paper != null ? paper.GetComponent<Renderer>() : null;
+                boardOk = r != null && Vector3.Distance(r.bounds.center, new Vector3(0f, bh.Value, 0f)) < 0.02f
+                          && paper.GetComponent<Collider>() == null;
+                Debug.Log($"[RoomAR][LoaderTest] board: h={bh:F3}, paper center={(r != null ? r.bounds.center.ToString("F3") : "없음")}, size={(r != null ? r.bounds.size.ToString("F3") : "-")}, {marker?.Summary} → {(boardOk ? "OK" : "FAIL")}");
+            }
+            else Debug.Log($"[RoomAR][LoaderTest] board: 없음 ({marker?.Summary})");
 
             var root = loader.Current.Root;
             var mr = root.GetComponentInChildren<MeshRenderer>();
@@ -88,7 +112,7 @@ namespace RoomAR.EditorTools
             Physics.simulationMode = prevMode;
             Debug.Log($"[RoomAR][LoaderTest] 보조 바닥 켜짐: {balls.Count}개 중 바닥 뚫림 {fell}개");
 
-            bool ok = matOk && colliders > 0 && fell == 0;
+            bool ok = matOk && colliders > 0 && fell == 0 && boardOk;
             Debug.Log(ok ? "[RoomAR][LoaderTest] PASS" : "[RoomAR][LoaderTest] FAIL");
             EditorSceneManager.OpenScene(SceneBuilder.RoomMeshScenePath, OpenSceneMode.Single); // 저장하지 않고 버림
             return ok ? 0 : 1;

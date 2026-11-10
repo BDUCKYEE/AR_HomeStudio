@@ -113,8 +113,31 @@ namespace RoomAR.EditorTools
             items.Add((floorLv, "바닥 높이", $"p1 {s.FloorP1:F3} m, p5 {s.FloorP5:F3} m, min {b.min.y:F3} m, |y|<3cm 정점 {s.NearFloorRatio:P1} (기대 p1 |y| ≤ {FloorTol} m)"));
 
             // 원점이 방 안에 있는지 (ChArUco 보드가 바닥 위에 있으므로 수평 원점은 바운딩 박스 안이어야 함)
-            bool originInside = b.min.x <= 0 && b.max.x >= 0 && b.min.z <= 0 && b.max.z >= 0;
-            items.Add((originInside ? Level.OK : Level.WARN, "원점 위치", originInside ? "월드 원점(XZ)이 메시 범위 안" : "월드 원점(XZ)이 메시 범위 밖 — 원점 정렬 확인 필요"));
+            var info = RoomMeshIO.ParseInfo(json);
+            sb.AppendLine($"- source: {info.Source ?? "?"}, scale_method: {info.ScaleMethod ?? "?"}, board_center_height_m: {(info.BoardCenterHeightM?.ToString("F3") ?? "null")}");
+            if (info.BoardCenterHeightM is float bh)
+            {
+                // interfaces.md (2026-11-10): 원점 = 벽 보드 중심의 바닥 투영, +Z = 벽 → 방 안쪽.
+                // → 메시는 대부분 z ≥ 0 쪽에 있고, 보드가 붙은 벽이 z ≈ 0 (메시 -Z 끝)이어야 함.
+                bool hOk = bh > 0.2f && bh < Mathf.Min(2.3f, b.max.y);
+                items.Add((hOk ? Level.OK : Level.WARN, "보드 중심 높이", $"{bh:F3} m (기대 0.2 ~ min(2.3, 메시 높이 {b.max.y:F2}) m)"));
+                bool xOk = b.min.x <= 0 && b.max.x >= 0;
+                bool wallOk = Mathf.Abs(b.min.z) <= 0.3f;
+                items.Add((xOk && wallOk ? Level.OK : Level.WARN, "원점 위치 (벽 보드)",
+                    $"메시 x [{b.min.x:F2}, {b.max.x:F2}] (0 포함 {(xOk ? "예" : "아니오")}), 메시 -Z 끝 z={b.min.z:F2} m (보드 벽 ≈ 0 ±0.3 기대) " +
+                    (wallOk ? "" : "— 보드 벽이 메시 끝이 아님: +Z 방향/원점 확인 필요")));
+                if (info.ZIntoRoom == false) items.Add((Level.WARN, "보드 +Z", "json z_into_room=false"));
+                // 보드 앞(방 안쪽 0.5m)에서 보드 쪽으로 Raycast → 벽 메시가 z≈0에 있는지
+                Physics.SyncTransforms();
+                bool wallHit = Physics.Raycast(new Vector3(0f, bh, 0.5f), Vector3.back, out var wh, 1.0f);
+                items.Add((wallHit && Mathf.Abs(wh.point.z) < 0.1f ? Level.OK : Level.WARN, "보드 벽면 Raycast",
+                    wallHit ? $"보드 앞 0.5m에서 -Z로 쏜 광선이 z={wh.point.z:F3} m에서 벽 메시에 맞음 (기대 |z| < 0.1)" : "벽 메시에 맞지 않음 (보드 주변 벽 누락?)"));
+            }
+            else
+            {
+                bool originInside = b.min.x <= 0 && b.max.x >= 0 && b.min.z <= 0 && b.max.z >= 0;
+                items.Add((originInside ? Level.OK : Level.WARN, "원점 위치", originInside ? "월드 원점(XZ)이 메시 범위 안 (보드 없음: 원점 = 바닥 범위 중심)" : "월드 원점(XZ)이 메시 범위 밖 — 원점 정렬 확인 필요"));
+            }
 
             // MeshCollider 동작: (1) 내부 80% 영역 9×9 격자에서 아래로 Raycast → 바닥(|y|<0.15m) 맞는 비율
             //                    (2) 같은 격자 중 바닥이 맞은 곳에 공을 1.2m에서 떨어뜨려 3초 뒤 메시 아래로 빠지지 않는지
