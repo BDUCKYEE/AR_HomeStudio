@@ -42,3 +42,29 @@ floor_fill:                     # 바닥 메우기 (build_room --fill-floor auto
   floor_band_m: 0.04            # |y| < 이 값이면 바닥으로 봄
   region_percentile: 1          # 방 범위 = 벽 정렬 좌표에서 점구름 1~99 백분위 직사각형
   y_offset_m: -0.003            # 기존 바닥과 겹칠 때 깜빡임 방지
+
+proxy:                          # 평면 + 상자 프록시 (python -m cv.recon.proxy_fit), 미터 단위 월드
+  voxel_m: 0.02                 # 점구름 다운샘플
+  normal_radius_m: 0.08         # 법선 추정 반경
+  plane_dist_m: 0.03            # RANSAC 거리 임계
+  horizontal_min_ny: 0.85       # 바닥/천장 후보 점: |법선 y| > 이 값
+  vertical_max_ny: 0.25         # 벽 후보 점: |법선 y| < 이 값
+  wall_min_points: 600          # 벽 평면 최소 인라이어 (다운샘플 후)
+  wall_min_span_m: 0.5          # 벽 인라이어의 수평 폭 하한
+  wall_outside_m: 0.10          # 이보다 바깥(법선 반대쪽)에 있는 점을 '벽 밖'으로 셈
+  wall_outside_frac: 0.04       # 벽 밖 점 비율이 이 값 이하인 평면만 방 경계 벽
+  wall_min_rel_inliers: 0.2     # 새 벽 = 인라이어가 가장 큰 벽의 이 비율 이상 (작은 비스듬한 잡음 평면 제외)
+  wall_merge_deg: 10            # 같은 벽으로 합칠 각도/거리
+  wall_merge_m: 0.15
+  max_planes: 16                # 벽 후보 RANSAC 반복 수
+  ceiling_min_height_m: 1.8     # 천장 후보 최소 높이
+  furniture_band_m: 0.07        # 바닥/천장/벽 평면에서 이 거리 안의 점은 가구에서 제외
+  furniture_cell_m: 0.05        # 가구 높이 지도 칸 (위에서 내려다본 2.5D, 벽 방향 격자)
+  furniture_min_cell_points: 4  # 칸 점유 최소 점 수 (원본 점구름 기준, 떠다니는 잡음 제거)
+  furniture_join_dh_m: 0.12     # 이웃 칸 높이 차이가 이 값 안이면 같은 가구로 이음
+  box_min_area_m2: 0.04         # 상자 바닥 넓이 하한
+  box_min_extent_m: 0.15        # 상자 가장 긴 변 하한
+  box_min_thickness_m: 0.04     # 상자 가장 짧은 수평 변 하한 (벽 잡음 띠 제거)
+  box_snap_deg: 12              # 벽 방향과 이 각도 안이면 벽 방향으로 맞춤
+  box_floor_snap_m: 0.8         # 상자 아래가 이 높이보다 낮으면 바닥(y=0)까지 내림 (침대·책상 옆/아래는 사진에 잘 안 찍혀 판처럼 뜸)
+  max_boxes: 40

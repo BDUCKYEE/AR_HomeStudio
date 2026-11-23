@@ -27,6 +27,20 @@ python -m cv.calib.charuco_range                    # 현재 보드의 검출 �
 - 실측: 가로 5칸 전체 폭 ÷ 5, 세로 7칸 전체 높이 ÷ 7을 재서 평균. 마커만 따로 쟀으면 `--marker-mm`.
 - 검출 거리 (합성, 실제는 조금 짧음): 폰 12MP 정면 3.5m / 45° 이내 3.0m, 1080p 웹캠 2.0~2.5m. (예전 A4 35mm는 폰 1.6m)
 
+### 손에 드는 보드 (`cv/config/charuco_handheld.yaml`)
+
+```bash
+python -m cv.calib.make_charuco --config charuco_handheld.yaml   # A3 PDF/PNG (…_id17.pdf)
+python -m cv.calib.handheld_range [--save]                       # 칸 크기 후보별 검출 거리 (천장 모서리 OV9281, 합성)
+python -m cv.calib.handheld_range --mix-test                     # 벽 보드 + 손 보드 한 장면에서 구분되는지 시험
+```
+
+- A3, 3×4칸, 칸 95mm, 마커 76mm, `DICT_4X4_50` **마커 17~22번** (벽 보드 0~16번과 겹치지 않음). 폼보드에 붙여 평평하게.
+- 검출: `cv.calib.charuco.detect_boards(gray, load_boards())` → `{"wall": …, "handheld": …}`. 마커를 한 번 찾고 번호 범위로 보드를 나눈다.
+  보드 하나만 쓸 때는 `spec.detect(gray)` (손 보드는 설정의 `detector:` 절대로 작은 마커용 매개변수 + 2배 확대 후 검출).
+- 합성 검출 거리 (보드를 세워 든 채, 카메라 높이 2.3m → 가슴 높이 1.2m): 렌즈 수평 70°면 yaw 45° 이내 3.0m, 30° 이내 3.5m.
+  수평 90°면 yaw 30° 이내 2.0m, 정면 2.5m. 넓은 렌즈에서 방 가운데를 쓰려면 보드를 카메라 쪽으로 기울여 들거나 더 큰 용지 필요.
+
 ## 방 메시 (`cv/recon/`)
 
 ```bash
@@ -45,6 +59,28 @@ python -m cv.recon.bench_vggt --images <폴더>         # 이미지 수별 메�
 출력: `${SHARED_DIR}/meshes/room_<YYYYMMDD>_<desc>.glb`, `room_latest.glb`, `room_latest.json`,
 디버그 `${SHARED_DIR}/recon_debug/<이름>/` (points.ply, cameras.json, preview.png, report.json).
 파라미터: `cv/config/recon.yaml`.
+
+### 메시 개선 실험 (`cv/recon/`, 결과는 `${SHARED_DIR}/meshes/experiments/<방법>/<이름>/`)
+
+`build_room`으로 메시를 만든 뒤, 같은 방에 대해 한 줄씩 실행합니다. 인자를 생략하면 `room_latest.json`이 가리키는 메시입니다.
+`room_latest.*`는 절대 건드리지 않습니다.
+
+```bash
+python -m cv.recon.proxy_fit            # 1. 평면(바닥/천장/벽 RANSAC) + 가구 상자 → proxy.json (interfaces.md 2-1절), proxy.glb
+python -m cv.recon.smooth_mesh          # 2. Taubin 스무딩(경계 고정) / 간소화 → smooth_*.glb
+python -m cv.recon.run_2dgs             # 3. VGGT → COLMAP(+SIFT·BA 시도) → 2DGS 학습(GPU 0) → 메시 → 2dgs_*.glb
+python -m cv.recon.run_spatiallm        # 4. SpatialLM 1.1 (GPU 1) → proxy.json   (--input mesh, --seeds 0 1 2)
+python -m cv.recon.compare_experiments  # 방법별 비교표 → experiments/compare_<이름>.md
+```
+
+- 2DGS, SpatialLM은 각각 별도 uv 환경(`/storage/AI/cv_project/envs/{2dgs,spatiallm}`)에서 하위 프로세스로 돕니다.
+  처음 한 번 `bash cv/recon/envs/setup_2dgs.sh`, `bash cv/recon/envs/setup_spatiallm.sh` (sudo 불필요, 시스템 nvcc 12.4 + gcc-13).
+- 2DGS: `export_colmap`이 VGGT 포즈를 우리 월드 좌표 그대로 COLMAP 모델로 내보내므로 결과 메시도 같은 좌표입니다.
+  BA는 결과가 정상(배율 ±5%, 카메라 이동 평균 5cm, 회전 3° 이내)일 때만 쓰고 아니면 VGGT 포즈로 학습합니다.
+- SpatialLM 입력은 z-up이라 `(x, y, z) → (x, −z, y)`로 한 번 바꾸고 결과를 되돌립니다. 생성 모델이라 시드마다 결과가 다릅니다.
+- 미리보기는 Open3D 오프스크린 렌더(헤드리스, Vulkan)입니다.
+- 라이선스: 2DGS = Inria/MPII Gaussian-Splatting 라이선스(비상업 연구), SpatialLM1.1 = 모델 Apache-2.0(Qwen 기반)이나
+  Sonata 인코더 가중치 CC-BY-NC-4.0(비상업). 공개/상업 사용 전 확인 필요.
 
 ### 촬영 요령 (폰)
 
