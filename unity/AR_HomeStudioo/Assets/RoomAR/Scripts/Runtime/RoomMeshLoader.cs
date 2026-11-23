@@ -33,6 +33,14 @@ namespace RoomAR
 
         public RoomMeshIO.LoadResult Current => current;
         public string Status => status;
+        public Material VertexColorMaterial => vertexColorMaterial;
+
+        /// <summary>보조 바닥 켜기/끄기 (F 키와 같음). 충돌 방식 비교 검사에서는 끕니다.</summary>
+        public bool SafetyFloor
+        {
+            get => safetyFloor;
+            set { safetyFloor = value; UpdateSafetyFloor(); }
+        }
 
         string Path_ => string.IsNullOrEmpty(overridePath) ? RoomMeshIO.LatestGlbPath : overridePath;
 
@@ -129,6 +137,10 @@ namespace RoomAR
                 if (boardMarker == null) boardMarker = GetComponent<BoardMarker>();
                 if (boardMarker == null) boardMarker = gameObject.AddComponent<BoardMarker>();
                 boardMarker.Apply(Info);
+                // 충돌 방식 전환(1~5): 원본을 다시 불러와도 현재 모드 유지
+                var switcher = GetComponent<CollisionModeSwitcher>();
+                if (switcher == null) switcher = gameObject.AddComponent<CollisionModeSwitcher>();
+                switcher.Apply();
                 string sample = Info.IsSample ? " · 예제 이미지 메시" : Info.Source == "real" ? " · 실제 방" : "";
                 status = $"메시: {Path.GetFileName(path)} ({loadedWriteTime:HH:mm:ss}){sample} · {Time.realtimeSinceStartup - t0:F1}s\n{res.Stats}";
                 Debug.Log($"[RoomAR] {status}");

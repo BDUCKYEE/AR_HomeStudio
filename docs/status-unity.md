@@ -4,8 +4,9 @@
 
 ## 현재 상태
 
-- 마지막 갱신: 2026-11-10 11:45
-- 단계: **실제 방 메시 검증 완료** (종합 WARN, 크기·바닥·보드 모두 OK) → 에디터에서 시연 확인 단계
+- 마지막 갱신: 2026-11-23 23:20
+- 단계: **충돌 방식 비교 준비 완료** (1~5 키 전환, proxy.json 로더, 배치 비교 테스트). 합성 데이터로 확인함. cv의 `experiments/` 결과 대기 중
+- 막힌 점: 메인 컴퓨터에서 `Z:`(Samba)가 "액세스 거부" → 사용자 재연결 필요. `proxy.json` 형식이 interfaces.md에 아직 없음 → 아래 "상대 세션에 요청"의 형식으로 받도록 구현
 - 사용 중인 메시: `room_20261110_myroom-charuco.glb` (`source: real`, `charuco`, 보드 중심 높이 0.8954m). 보조 바닥(y=0)은 계속 켬 (X쪽 벽 구멍 대비)
 - 환경: Unity 6000.3.28f1, URP 17.3, Input System 1.20.1 (Active Input Handling = Input System Package)
 
@@ -20,6 +21,39 @@
 - READY: 벽 ChArUco 보드 위치 표시 / `room_latest.json`에 `board_center_height_m`가 있으면 `RoomMesh` 씬에서 메시 로드 시 자동 생성 (**B** 토글, 화면 안내에 보드 높이 표시). 얇은 사각형: 종이 A3 297×420mm(흰색) + 패턴 `squares_x × squares_y × square_mm`(기본 5×7×50mm, 검정), 보드 +X 빨간 막대, 보드 중심→바닥 원점 노란 수직선, 바닥 원점 십자(파랑 = +Z 방 안쪽). 충돌체 없음. 배치 테스트: `RoomMeshLoaderSelfTest.RunBatch -roomGlb <합성 벽 원점 glb>` → 종이 중심 (0.000, 1.250, 0.004) = 기대 (0, h, 0) → PASS. 보드 정보가 없는 현재 예제 메시에서는 "보드: 위치 정보 없음 (scale_method=camera-height)"으로 표시
 
 - READY: 실제 방 메시 + 보드 표시 / `RoomMesh.unity` Play → `room_20261110_myroom-charuco.glb` 자동 로드, 보드는 벽 (0, 0.895, 0)에 표시. 배치: 검증기 종합 WARN(종료 0), `RoomMeshLoaderSelfTest` PASS (81개 낙하 중 바닥 뚫림 0, X쪽 벽 구멍으로 탈출 2, 보드 종이 중심 (0.000, 0.895, 0.004))
+
+- READY: 충돌 방식 전환 + proxy.json 충돌체 + 비교 테스트 / `RoomMesh.unity` Play → **1** 원본 메시 · **2** 스무딩 메시 · **3** 평면+상자 프록시 · **4** 2DGS 메시 · **5** SpatialLM 프록시, **G** 현재 충돌체 보기. 보이는 메시는 항상 원본이고 충돌체만 바뀜 (파일이 없으면 이전 방식 유지, 화면에 이유 표시). 배치: `-executeMethod RoomAR.EditorTools.CollisionCompareTest.RunBatch [-roomGlb <원본>] [-experimentsDir <폴더>] [-compareVerbose]` (`-quit` 없이, 보고서 `Logs/collision_compare.md`), 메뉴 **RoomAR > 충돌 방식 비교 (공 낙하)**. 합성 데이터로 5개 방식 모두 확인 (아래 표)
+
+### 충돌 방식 비교
+
+`${SHARED_DIR}/meshes/experiments/` 아래에서 방식마다 이름 규칙에 맞는 **가장 최근** 파일을 씁니다 (하위 폴더 포함, 경로 소문자 기준):
+
+| 키 | 방식 | 찾는 파일 |
+|---|---|---|
+| 1 | 원본 메시 | `room_latest.glb` (보이는 메시와 같음) |
+| 2 | 스무딩 메시 | `.glb`, 경로에 `smooth` (`2dgs`, `spatiallm` 제외) |
+| 3 | 평면+상자 프록시 | `.json`, 경로에 `proxy` 또는 `plane` (`spatiallm` 제외) |
+| 4 | 2DGS 메시 | `.glb`, 경로에 `2dgs` |
+| 5 | SpatialLM 프록시 | `.json`, 경로에 `spatiallm` |
+
+테스트 방법 (보조 바닥 끔, 공 지름 0.2m, 탄성 0.8, 공끼리 충돌 없음, 4초):
+- 낙하: 원본 범위 10~90% 9×9 격자, 1.2m에서 떨어뜨림 (81개)
+- 투척: 범위 30/50/70% 3×3 지점, 1.0m에서 수평 12방향 6m/s + 위로 1m/s (108개, 시작점이 충돌체 안이면 제외)
+- 분류: 원본 XZ 범위를 0.05m 넘게 나가면 **벽 이탈**, 범위 안에서 y < −0.2이면 **바닥 관통**(구멍으로 굴러 빠진 경우 포함), 천장 위 0.2m를 넘으면 천장
+- 정합: 방 안 27지점 × 26방향 광선을 원본 메시와 비교. 원본이 맞은 광선 중 같이 맞은 비율과 거리 차. X축 반전 실수가 있으면 여기서 크게 벌어집니다
+
+**합성 데이터 결과 (2026-11-23 23:09, 형식·좌표 확인용이며 실제 결과 아님)**: 원본 = 3.3×2.5×2.4 벽 원점 방, 바닥 구멍 + X쪽 벽 구멍
+
+| 키 | 방식 | 낙하: 바닥 관통 / 벽 이탈 (/81) | 투척: 바닥 관통 / 벽 이탈 / 천장 (/108) | 원본과 광선 일치 | 거리 차 중앙값 / 90% |
+|---|---|---|---|---|---|
+| 1 | 원본 메시 (구멍 있음) | 4 / 0 | 17 / 11 / 0 | 기준 | 기준 |
+| 2 | 스무딩 메시 (구멍 없음) | 0 / 0 | 0 / 0 / 0 | 100% | 0.0 / 0.0 cm |
+| 3 | 평면+상자 (`planes/proxy.json`, 평면 6 + 책상 상자) | 0 / 0 | 0 / 0 / 0 | 100% | 0.0 / 0.0 cm |
+| 4 | 2DGS (±1cm 요철, 바닥 구멍) | 14 / 0 | 19 / 0 / 0 | 100% | 0.4 / 1.0 cm |
+| 5 | SpatialLM (`spatiallm/proxy.json`, 벽 4 + 바닥 + 책상 yaw 90°) | 0 / 0 | 0 / 0 / 0 | 79% (천장 없음) | 0.0 / 0.0 cm |
+
+- 책상 상자(glTF +X 쪽)가 원본과 거리 차 0.0cm로 맞아서, proxy.json의 X 반전(glTF → Unity)이 메시(glTFast)와 같은 방향임을 확인했습니다. 평면 표기(`d`, `equation`, `polygon`, `point`+`size`)와 상자 표기(`min/max`, `center/size/yaw_deg`)가 모두 같은 결과를 냈습니다.
+- 2DGS가 원본보다 바닥 관통이 많은 것은, 요철이 있는 바닥에서 공이 옆으로 튀고 굴러 구멍에 들어갔기 때문입니다 (`-compareVerbose`로 확인: 구멍에서 0.5~0.8m 떨어진 곳에서 떨어진 공이 구멍 근처에서 빠짐). 실제 메시에서도 거친 바닥은 구멍만큼 문제가 될 수 있습니다.
 
 ### 실제 방 메시 검증 결과 (2026-11-10 11:32, 배치 모드)
 
@@ -111,6 +145,7 @@
 | `[` / `]` | 공 탄성(PhysicsMaterial.bounciness) −/+ 0.1 |
 | C / R | 공 모두 제거 / 씬 초기화 |
 | L / V / F / B | (RoomMesh 씬) 메시 다시 불러오기 / 메시 표시 토글 / 보조 바닥 토글 / 보드 표시 토글 |
+| 1~5 / G | (RoomMesh 씬) 충돌 방식 전환 (원본 / 스무딩 / 평면+상자 / 2DGS / SpatialLM) / 현재 충돌체 보기 |
 
 ### 박스 방 구성
 
@@ -144,6 +179,21 @@
 - 가능하면 json에 `triangles`, `scale_method`(ChArUco/추정), 생성 시각도 넣어 주십시오. 검증 보고서에 함께 기록하겠습니다.
 - `room_latest.glb`는 임시 이름으로 쓴 뒤 rename으로 교체해 주십시오. Unity가 L 키로 다시 불러올 때 쓰다 만 파일을 읽지 않게 하기 위해서입니다. 쓰다 만 파일을 읽더라도 Unity는 기존 메시를 유지합니다.
 
+- **`proxy.json` 형식 (interfaces.md에 아직 없음)**: Unity는 우선 아래 형식을 받도록 만들었습니다. 다르게 정하셨다면 interfaces.md나 cv 상태 파일에 적어 주시면 맞추겠습니다. 좌표는 방 메시와 같은 월드 좌표계(glTF, Y 위, 미터, 같은 원점)이고 Z 위(SpatialLM 원본)라면 변환해서 넣어 주십시오.
+  ```json
+  {
+    "frame": "gltf",
+    "floor":  {"label": "floor", "normal": [0, 1, 0], "d": 0},
+    "planes": [{"label": "wall", "normal": [nx, ny, nz], "point": [x, y, z], "polygon": [[x, y, z], ...]}],
+    "walls":  [{"start": [x, y, z], "end": [x, y, z], "height": 2.4, "thickness": 0.3}],
+    "boxes":  [{"label": "bed", "center": [x, y, z], "size": [sx, sy, sz], "yaw_deg": 30}]
+  }
+  ```
+  - 평면: `normal`과 함께 `point`, `d`(n·p + d = 0), `equation` [a,b,c,d] 중 하나를 씁니다. 크기는 `polygon`(꼭짓점) 또는 `center`+`size` [w,h]이고, 둘 다 없으면 방 전체를 덮는 무한 평면으로 봅니다. 라벨이 floor/wall/ceiling이면 법선을 방 안쪽으로 자동으로 맞춥니다.
+  - 상자: 회전은 `yaw_deg`(+Y축, 도), `yaw`(라디안), `rotation` [x,y,z,w], `R` 3×3 중 하나를 씁니다. 크기는 `min`/`max`로 줘도 됩니다. `size`는 회전 전 로컬 축 기준입니다.
+  - `doors`와 `windows`는 무시합니다. **SpatialLM은 바닥을 출력하지 않으므로 `floor` 평면을 꼭 넣어 주십시오** (없으면 공이 모두 빠짐). 천장도 있으면 좋습니다.
+- **experiments 파일 이름**: 위 "충돌 방식 비교" 표의 규칙(`smooth`, `proxy`/`plane`, `2dgs`, `spatiallm`이 경로에 들어감)에 맞춰 주십시오 (예: `experiments/2dgs/room_20261123_2dgs.glb`, `experiments/spatiallm/proxy.json`). 메시는 원본과 같은 좌표계여야 하고, 임시 이름으로 쓴 뒤 rename해 주십시오.
+
 ## 규약 변경
 
 - (없음)
@@ -160,3 +210,4 @@
 | 2026-11-10 11:40 | interfaces.md 새 좌표계(벽 보드) 확인. BoardMarker(보드 위치 표시, B 토글), json 파싱(`RoomMeshInfo`), 검증기 보드 검사 추가. 합성 벽 원점 메시로 배치 테스트 PASS. 실제 방 메시(`source: real`) 대기 시작 |
 | 2026-11-10 11:50 | 시작 카메라 보정: 새 원점에서는 씬 기본 카메라(z=−1)가 보드 벽 밖 → 첫 로드 때 범위 밖이면 방 안쪽 끝 (−0.12, 1.5, 2.89)에서 보드 벽을 바라보게 이동. 로더 테스트 PASS |
 | 2026-11-10 11:45 | 11:31 `source: real` 감지 → `room_20261110_myroom-charuco.glb` 배치 검증 WARN(크기·바닥·보드 OK), 로더 테스트 PASS, 보드 (0, 0.895, 0) 표시 확인 |
+| 2026-11-23 23:20 | 충돌 방식 전환(CollisionModeSwitcher, 1~5/G), proxy.json 로더(RoomProxy, MiniJson), 비교 테스트(CollisionCompareTest) 추가. 합성 데이터로 5개 방식 확인, 기존 로더 테스트 PASS. `Z:` 액세스 거부라 실제 experiments 결과는 대기 중 (백그라운드 대기 시작) |
