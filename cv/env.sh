@@ -1,8 +1,8 @@
 # cv 세션 공통 환경. 사용: source cv/env.sh
 # 캐시와 가상환경은 모두 /storage 쪽에 둔다 (홈 디렉토리에 쓰지 않음).
 _CV_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export CV_VENV="${CV_VENV:-/storage/AI/test/.venv}"
-export CACHE_ROOT="${CACHE_ROOT:-/storage/AI/test/.cache}"
+export CV_VENV="${CV_VENV:-/storage/AI/cv_project/.venv}"
+export CACHE_ROOT="${CACHE_ROOT:-/storage/AI/cv_project/.cache}"
 export UV_CACHE_DIR="$CACHE_ROOT/uv"
 export UV_LINK_MODE=copy
 export HF_HOME="${HF_HOME_OVERRIDE:-/storage/AI/cache/huggingface}"   # VGGT 가중치도 여기 (hub/models--facebook--VGGT-1B)

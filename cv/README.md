@@ -5,7 +5,7 @@
 
 ## 환경
 
-가상환경은 저장소 밖 `/storage/AI/test/.venv` (uv, Python 3.12.14)를 씁니다. 캐시는 `/storage/AI/test/.cache` (uv, torch 등), Hugging Face/VGGT 가중치는 `HF_HOME=/storage/AI/cache/huggingface`.
+가상환경은 저장소 밖 `/storage/AI/cv_project/.venv` (uv, Python 3.12.14)를 씁니다. 캐시는 `/storage/AI/cv_project/.cache` (uv, torch 등), Hugging Face/VGGT 가중치는 `HF_HOME=/storage/AI/cache/huggingface`.
 
 ```bash
 source cv/env.sh                               # venv 활성화 + 캐시 경로 + PYTHONPATH
