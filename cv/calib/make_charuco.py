@@ -1,8 +1,9 @@
-"""A4 실측 크기 ChArUco 보드 PDF/PNG 생성, 인쇄 후 실측값 반영.
+"""실측 크기 ChArUco 보드 PDF/PNG 생성 (A4/A3), 인쇄 후 실측값 반영.
 
 사용:
-  python -m cv.calib.make_charuco                     # ${SHARED_DIR}/charuco/ 에 PDF, PNG 생성 + 자체 검출 검증
-  python -m cv.calib.make_charuco --set-measured 34.8 # 실측 칸 크기(mm)를 charuco.yaml에 기록
+  python -m cv.calib.make_charuco                     # 벽 보드 (charuco.yaml) → ${SHARED_DIR}/charuco/
+  python -m cv.calib.make_charuco --config charuco_handheld.yaml   # 손에 드는 보드 (마커 17번부터)
+  python -m cv.calib.make_charuco --set-measured 34.8 # 실측 칸 크기(mm)를 설정 파일에 기록 (--config 와 함께 사용 가능)
   python -m cv.calib.make_charuco --set-measured 34.8 --marker-mm 25.9
   python -m cv.calib.make_charuco --clear-measured    # 실측값 제거 (설계값 사용)
 """
@@ -24,8 +25,9 @@ def _text(img, s, org, scale=2.2, thick=5):
     cv2.putText(img, s, org, cv2.FONT_HERSHEY_SIMPLEX, scale, 0, thick, cv2.LINE_AA)
 
 
-def render_page() -> tuple[np.ndarray, dict]:
-    c = load_yaml("charuco.yaml")
+def render_page(config: str = "charuco.yaml") -> tuple[np.ndarray, dict]:
+    c = load_yaml(config)
+    first = int(c.get("first_marker_id", 0))
     des, page = c["design"], c["page"]
     ppm = int(page["px_per_mm"])
     sq_mm, mk_mm = float(des["square_length_mm"]), float(des["marker_length_mm"])
@@ -40,45 +42,58 @@ def render_page() -> tuple[np.ndarray, dict]:
         raise ValueError("보드가 페이지 여백(좌우 5mm, 상하 15mm) 안에 들어가지 않습니다.")
 
     d = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, c["dictionary"]))
-    board = cv2.aruco.CharucoBoard((nx, ny), sq_mm, mk_mm, d)
+    n_mk = (nx * ny) // 2
+    board = cv2.aruco.CharucoBoard((nx, ny), sq_mm, mk_mm, d, np.arange(first, first + n_mk, dtype=np.int32))
     board.setLegacyPattern(bool(c.get("legacy_pattern", False)))
     # marginSize=0 이면 칸 = 정확히 bw/nx px. 마커는 칸 안에서 OpenCV가 비율대로 배치
     board_img = board.generateImage((bw, bh), marginSize=0, borderBits=1)
 
     pageimg = np.full((H, W), 255, np.uint8)
-    x0, y0 = (W - bw) // 2, (H - bh) // 2
+    # 세로 위치: 가운데를 기본으로 하되, 머리글(보드 위 14mm까지)이 위 끝에서 7mm 이상,
+    # 자 글자(보드 아래 7mm + 4.5mm)가 아래 끝에서 6mm 이상 떨어지게 (프린터 인쇄 불가 여백 4~5mm)
+    y_min, y_max = 22 * ppm, H - bh - 18 * ppm
+    if y_min > y_max:
+        raise ValueError("보드가 너무 커서 머리글과 100mm 자가 인쇄 가능 영역에 들어가지 않습니다.")
+    x0, y0 = (W - bw) // 2, int(np.clip((H - bh) // 2, y_min, y_max))
     pageimg[y0:y0 + bh, x0:x0 + bw] = board_img
 
-    # 머리글
-    _text(pageimg, f"ChArUco {nx}x{ny}  {c['dictionary']}  square {sq_mm:.1f} mm  marker {mk_mm:.1f} mm",
-          (x0, y0 - 9 * ppm), 2.0, 4)
-    _text(pageimg, "PRINT AT 100% / ACTUAL SIZE (no fit-to-page). Keep flat, do not move after calibration.",
-          (x0, y0 - 4 * ppm), 1.5, 3)
+    # 머리글 (보드 정보: 크기, 사전, 마커 번호 범위)
+    name = str(c.get("name", "wall")).upper()
+    _text(pageimg, f"{name}  ChArUco {nx}x{ny}  {c['dictionary']}  markers {first}-{first + n_mk - 1}",
+          (x0, y0 - 14 * ppm), 2.0, 4)
+    _text(pageimg, f"square {sq_mm:.1f} mm  marker {mk_mm:.1f} mm  board {nx * sq_mm:.0f} x {ny * sq_mm:.0f} mm",
+          (x0, y0 - 9 * ppm), 1.7, 4)
+    note = c.get("page_note") or "PRINT AT 100% / ACTUAL SIZE (no fit-to-page). Keep flat, do not move after calibration."
+    _text(pageimg, note, (x0, y0 - 4 * ppm), 1.4, 3)
     # 보드 축 표시 (OpenCV 보드 좌표계: 원점 = 보드 왼쪽 위, +X 오른쪽, +Y 아래)
-    _text(pageimg, "O", (x0 - 5 * ppm, y0 - 1 * ppm), 1.6, 4)
+    narrow = x0 < 10 * ppm          # 좌우 여백이 좁으면(손 보드 6mm) 축 글자를 보드 위/아래에 둔다
+    _text(pageimg, "O", (x0 + (0 if narrow else -5 * ppm), y0 - 1 * ppm), 1.6, 4)
     _text(pageimg, "+X ->", (x0 + bw - 18 * ppm, y0 - 1 * ppm), 1.6, 4)
-    _text(pageimg, "+Y", (x0 - 7 * ppm, y0 + bh - 2 * ppm), 1.6, 4)
+    if narrow:
+        _text(pageimg, "+Y v", (x0, y0 + bh + 6 * ppm), 1.6, 4)
+    else:
+        _text(pageimg, "+Y", (x0 - 7 * ppm, y0 + bh - 2 * ppm), 1.6, 4)
 
     # 아래 여백: 100mm 자 (인쇄 배율 확인용)
-    ry = y0 + bh + 12 * ppm
-    rx = x0
+    ry = y0 + bh + 7 * ppm
+    rx = x0 + (14 * ppm if narrow else 0)
     cv2.line(pageimg, (rx, ry), (rx + 100 * ppm, ry), 0, 4)
     for mm in range(0, 101):
         L = 5 * ppm if mm % 10 == 0 else (3 * ppm if mm % 5 == 0 else int(1.5 * ppm))
         x = rx + mm * ppm
         cv2.line(pageimg, (x, ry), (x, ry - L), 0, 3 if mm % 10 == 0 else 2)
-    _text(pageimg, "0", (rx - 1 * ppm, ry + 5 * ppm), 1.3, 3)
-    _text(pageimg, "100 mm", (rx + 96 * ppm, ry + 5 * ppm), 1.3, 3)
+    _text(pageimg, "0", (rx - 1 * ppm, ry + int(4.5 * ppm)), 1.3, 3)
+    _text(pageimg, "100 mm", (rx + 96 * ppm, ry + int(4.5 * ppm)), 1.3, 3)
     _text(pageimg, f"board {nx * sq_mm:.0f} x {ny * sq_mm:.0f} mm", (rx + 110 * ppm, ry), 1.5, 3)
 
     meta = dict(ppm=ppm, sq_px=sq_px, nx=nx, ny=ny, x0=x0, y0=y0, W=W, H=H, sq_mm=sq_mm, mk_mm=mk_mm,
-                dictionary=c["dictionary"])
+                dictionary=c["dictionary"], first=first, config=config)
     return pageimg, meta
 
 
 def self_check(img: np.ndarray, meta: dict) -> str:
     """생성 이미지를 축소해 다시 검출 → 코너 수와 칸 간격 확인."""
-    spec = load_charuco()
+    spec = load_charuco(meta["config"])
     det = spec.make_detector()
     s = 0.25
     small = cv2.resize(img, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
@@ -101,6 +116,8 @@ def save(img: np.ndarray, meta: dict, force: bool = False) -> tuple[Path, Path]:
     out.mkdir(parents=True, exist_ok=True)
     paper = {(210, 297): "A4", (297, 420): "A3"}.get((round(meta["W"] / meta["ppm"]), round(meta["H"] / meta["ppm"])), "page")
     stem = f"charuco_{paper}_{meta['nx']}x{meta['ny']}_{meta['sq_mm']:g}mm_{meta['dictionary']}"
+    if meta["first"]:
+        stem += f"_id{meta['first']}"
     dpi = meta["ppm"] * 25.4  # 24 px/mm = 609.6 dpi → 페이지 = 정확히 A4
     pil = Image.fromarray(img).convert("1", dither=Image.Dither.NONE)
     png = out / f"{stem}.png"
@@ -117,8 +134,8 @@ def pdf_page_mm(pdf: Path) -> tuple[float, float]:
     return float(m.group(1)) / 72 * 25.4, float(m.group(2)) / 72 * 25.4
 
 
-def set_measured(square_mm: float | None, marker_mm: float | None) -> None:
-    path = CONFIG_DIR / "charuco.yaml"
+def set_measured(square_mm: float | None, marker_mm: float | None, config: str = "charuco.yaml") -> None:
+    path = CONFIG_DIR / config
     txt = path.read_text(encoding="utf-8")
     blk = re.search(r"(?ms)^measured:\n(.*?)(?=^\S|\Z)", txt)
     if not blk:
@@ -128,8 +145,8 @@ def set_measured(square_mm: float | None, marker_mm: float | None) -> None:
     body = re.sub(r"(square_length_mm:\s*)\S+", lambda m: m.group(1) + fmt(square_mm), body, count=1)
     body = re.sub(r"(marker_length_mm:\s*)\S+", lambda m: m.group(1) + fmt(marker_mm), body, count=1)
     path.write_text(txt[:blk.start(1)] + body + txt[blk.end(1):], encoding="utf-8")
-    spec = load_charuco()
-    print(f"charuco.yaml 갱신: 칸 {spec.square_m * 1000:g} mm, 마커 {spec.marker_m * 1000:.3g} mm "
+    spec = load_charuco(config)
+    print(f"{config} 갱신: 칸 {spec.square_m * 1000:g} mm, 마커 {spec.marker_m * 1000:.3g} mm "
           f"(실측 사용={spec.measured})")
 
 
@@ -139,16 +156,17 @@ def main() -> None:
     ap.add_argument("--marker-mm", type=float, help="인쇄물 실측 마커 크기 (mm). 생략 시 설계 비율로 계산")
     ap.add_argument("--clear-measured", action="store_true")
     ap.add_argument("--force", action="store_true", help="기존 PDF/PNG 덮어쓰기")
+    ap.add_argument("--config", default="charuco.yaml", help="보드 설정 (cv/config/ 아래). 손 보드: charuco_handheld.yaml")
     a = ap.parse_args()
     if a.clear_measured:
-        set_measured(None, None)
+        set_measured(None, None, a.config)
         return
     if a.set_measured is not None:
-        if not 20 <= a.set_measured <= 60:
+        if not 20 <= a.set_measured <= 120:
             raise SystemExit("칸 크기는 mm 단위로 입력합니다 (예: 34.8).")
-        set_measured(a.set_measured, a.marker_mm)
+        set_measured(a.set_measured, a.marker_mm, a.config)
         return
-    img, meta = render_page()
+    img, meta = render_page(a.config)
     print(self_check(img, meta))
     png, pdf = save(img, meta, a.force)
     w, h = pdf_page_mm(pdf)

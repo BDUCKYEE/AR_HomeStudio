@@ -1,0 +1,34 @@
+# 손에 드는 ChArUco 보드 (2026-11-23). 고정 카메라(천장 모서리) 외부 파라미터 확인·보조용.
+# 벽 보드(charuco.yaml, DICT_4X4_50 마커 0~16번)와 같은 사전이므로 마커 번호를 17번부터 써서 구분한다.
+# 검출: cv.calib.charuco.detect_boards() 가 마커 번호 범위로 두 보드를 나눈다.
+# 생성: python -m cv.calib.make_charuco --config charuco_handheld.yaml
+# 칸 크기 선택 근거: python -m cv.calib.handheld_range (합성 시험, docs/status-cv.md 표)
+# 인쇄 후 실측: python -m cv.calib.make_charuco --config charuco_handheld.yaml --set-measured <칸 mm> [--marker-mm <마커 mm>]
+
+name: handheld
+dictionary: DICT_4X4_50
+first_marker_id: 17         # 마커 17~22번 (3×4칸 → 마커 6개, 코너 6개)
+squares_x: 3                # 가로 칸 수 (보드 X, 용지 짧은 변)
+squares_y: 4                # 세로 칸 수 (보드 Y, 용지 긴 변)
+legacy_pattern: false
+
+# 설계값. 마커 = 칸 × 0.8 (OpenCV 권장: 마커 둘레 흰 여백 ≥ ArUco 한 칸의 70%)
+design:
+  square_length_mm: 95.0
+  marker_length_mm: 76.0
+
+measured:
+  square_length_mm: null
+  marker_length_mm: null
+
+# A3 세로. 보드 285×380mm (좌우 여백 6mm, 위아래 20mm). px_per_mm=24 → 칸 2280px, 마커 1824px
+page:
+  width_mm: 297.0
+  height_mm: 420.0
+  px_per_mm: 24
+page_note: "HANDHELD board. PRINT AT 100% (no fit-to-page). Mount on flat foam board."
+
+# 멀리(2~3.5m) 작은 마커 검출용: 매개변수 조정 + 2배 확대 후 검출 (합성: 3m 검출률 14% → 75%, 렌즈 수평 70°)
+detector:
+  tuned: true
+  upscale: 2
