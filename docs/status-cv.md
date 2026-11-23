@@ -4,11 +4,22 @@
 
 ## 현재 상태
 
-- 마지막 갱신: 2026-11-10 11:35
-- 단계: **실제 방 메시 완료** (사용자 사진 81장, ChArUco 스케일). unity 쪽 불러오기/시연 준비 단계
+- 마지막 갱신: 2026-11-24 00:20
+- 단계: **메시 개선 실험 완료** (평면+상자 프록시, Taubin 스무딩, 2DGS, SpatialLM — 아래 비교표). `room_latest`는 그대로.
+  손에 드는 ChArUco 보드(A3, 마커 17~22번) PDF 준비. 다음: 고정 카메라 초점 맞춤, 내부 파라미터 캘리브레이션 (사용자가 나중에 진행)
 - 최신 메시: `room_latest.glb` = `room_20261110_myroom-charuco.glb` (`source: real`, `scale_method: charuco`), 153,258 삼각형(바닥 메우기 +3,258 포함), 보드 중심 높이 0.8954m
+- 고정 카메라: OV9281 4대 USB 인식·동시 캡처 확인 (2026-11-14, 아래 작업 기록). 4대 모두 시리얼이 `SN0001`로 같아 **`/dev/v4l/by-path/`(꽂은 포트)로 구분해야 함**
 
 ## READY
+
+- READY: **메시 개선 실험** / 결과 `${SHARED_DIR}/meshes/experiments/<방법>/<메시 이름>/`, 비교표 `experiments/compare_<메시 이름>.md` (아래 표) /
+  `python -m cv.recon.proxy_fit` · `smooth_mesh` · `run_2dgs` · `run_spatiallm` · `compare_experiments` (인자 없으면 `room_latest.json`의 메시, 새 방도 같은 명령 한 줄). 예제 침실로도 재실행 확인
+- READY: **방 프록시** `proxy.json` (interfaces.md 2-1절) / `experiments/proxy-ransac/room_20261110_myroom-charuco/{proxy.json, proxy.glb, preview.png}` /
+  벽 4 + 바닥 + 천장, 가구 상자 18개, 방 2.55×3.27m(실측 2.5×3.3, +2%/−1%) 높이 2.37m. 저장 전 규약 검사(`check_proxy`) 통과. 같은 입력이면 같은 결과(시드 고정 RANSAC)
+- READY: SpatialLM 프록시 `experiments/spatiallm/room_20261110_myroom-charuco/proxy.json` (점구름 입력, 시드 0: 벽 4, 문 1, 창 2, 상자 11 — bed, desk, bookcase 등 종류 포함) + 시드/입력별 변형
+- READY: 2DGS / SpatialLM 전용 환경 `/storage/AI/cv_project/envs/{2dgs,spatiallm}/.venv` (메인 .venv 무변경) / `bash cv/recon/envs/setup_2dgs.sh`, `setup_spatiallm.sh` (sudo 불필요: 시스템 nvcc 12.4 + gcc-13, flash-attn 미리 빌드 wheel)
+- READY: **손에 드는 ChArUco 보드** / `${SHARED_DIR}/charuco/charuco_A3_3x4_95mm_DICT_4X4_50_id17.pdf` (A3 실측, 100mm 자·보드 정보 표기, 인쇄 내용이 가장자리에서 6mm 이상 안쪽), 설정 `cv/config/charuco_handheld.yaml` /
+  3×4칸, 칸 95mm, 마커 76mm, `DICT_4X4_50` 17~22번. 검출 `cv.calib.charuco.detect_boards()`가 마커 번호로 벽 보드(0~16)와 구분 → 한 장면 합성 시험(`handheld_range --mix-test`) 벽 24/24, 손 6/6, 섞임 0, 코너 오차 평균 0.30px. 생성 이미지 자체 검출 6/6, 칸 간격 2280.00px(기대 2280)
 
 - READY: **실제 방 메시** / `${SHARED_DIR}/meshes/room_latest.glb` (= `room_20261110_myroom-charuco.glb`) + `room_latest.json` / 입력 `scans/20261110` 82장 중 세로 81장(가로 1장 제외), VGGT 17초 11.4GB, 전체 50초. ChArUco: 20시점에서 코너 24/24 삼각측량, 재투영 평균 1.8px, 보드 정합 잔차 2.3mm, 휨 2.2mm, 보드 중심 높이 0.895m, +Z 방 안쪽 확인. validate 전 항목 PASS: 바닥 1백분위 y −0.009m, 높이 2.37m, **수평 범위 3.35×2.60m (실측 3.3×2.5 대비 +2%/+4%, 스케일은 보드만으로 정했으므로 독립 확인)**. 바닥 덮임 53% → 1,629칸 메움
 
@@ -21,6 +32,49 @@
 - READY: 바닥 메우기 / `build_room --fill-floor auto|on|off` (`recon.yaml` `floor_fill`) / 예제 침실: 바닥 덮임 11% → 5,351칸(5cm) 채움, 법선 100% +Y, validate 바닥 표면 비율 9% → 49%
 - READY: A3 보드 검출 거리 / `python -m cv.calib.charuco_range` / 아래 표
 - READY (임시 메시): `${SHARED_DIR}/meshes/room_latest.glb` + `room_latest.json` / 예제 침실 (unity 쪽 glTFast 로드 시험용) / validate 통과(방 크기 WARN)
+
+### 메시 개선 실험 비교 (2026-11-23, `room_20261110_myroom-charuco`, 실측 2.5×3.3m)
+
+`python -m cv.recon.compare_experiments` 출력. 미리보기 경로는 `${SHARED_DIR}` 기준.
+벽 평면도: 메시 = proxy-ransac 벽 평면 ±6cm 안 표면의 RMS / 20cm 타일 잔차(국소 거칠기), 프록시 = 입력 점이 그 벽 ±10cm 안에서 떨어진 RMS.
+구멍: 메시 = 벽 5cm 칸 중 표면 있는 비율 / 열린 경계 길이, 프록시 = 평면이라 구멍 없음(괄호는 입력 점 덮임).
+
+| 방법 | 시간 | 삼각형/상자 | 방 크기 | 벽 평면도 | 구멍 | 미리보기 |
+|---|---|---|---|---|---|---|
+| 원본 TSDF (기준) | - | 153,258 | - | 30.6mm / 13.6mm | 덮임 66% / 경계 225m | `meshes/experiments/smooth/room_20261110_myroom-charuco/smooth_orig.png` |
+| smooth t10 | 1s | 153,258 | - | 30.4mm / 13.07mm | 덮임 66% / 경계 225m | `meshes/experiments/smooth/room_20261110_myroom-charuco/smooth_t10.png` |
+| smooth t30 | 1s | 153,258 | - | 30.4mm / 12.85mm | 덮임 66% / 경계 225m | `meshes/experiments/smooth/room_20261110_myroom-charuco/smooth_t30.png` |
+| smooth t100 | 3s | 153,258 | - | 30.5mm / 12.75mm | 덮임 66% / 경계 225m | `meshes/experiments/smooth/room_20261110_myroom-charuco/smooth_t100.png` |
+| smooth t30-s50k | 2s | 49,999 | - | 30.4mm / 12.81mm | 덮임 66% / 경계 223m | `meshes/experiments/smooth/room_20261110_myroom-charuco/smooth_t30-s50k.png` |
+| smooth t30-s20k | 2s | 19,999 | - | 30.4mm / 12.6mm | 덮임 66% / 경계 208m | `meshes/experiments/smooth/room_20261110_myroom-charuco/smooth_t30-s20k.png` |
+| 2DGS noba (가우시안 1,756,450) | 48.9분 | 150,000 | - | 33.5mm / 16.19mm | 덮임 54% / 경계 686m | `meshes/experiments/2dgs/room_20261110_myroom-charuco/2dgs_noba.png` |
+| 평면+상자 (RANSAC) | 3s | 벽 4, 상자 18 | 2.55×3.27m, 높이 2.37m | 평면 (점 44mm) | 없음 (점 덮임 73%) | `meshes/experiments/proxy-ransac/room_20261110_myroom-charuco/preview.png` |
+| SpatialLM points s0 | 6s | 벽 4, 상자 11, 문/창 3 | 2.45×3.25m, 높이 2.28m | 평면 (점 50mm) | 없음 (점 덮임 76%) | `meshes/experiments/spatiallm/room_20261110_myroom-charuco/proxy.png` |
+| SpatialLM mesh s0 | 5s | 벽 4, 상자 11, 문/창 2 | 2.40×3.17m, 높이 2.48m | 평면 (점 54mm) | 없음 (점 덮임 72%) | `meshes/experiments/spatiallm/room_20261110_myroom-charuco/proxy_mesh_s0.png` |
+| SpatialLM mesh s1 | 4s | 벽 4, 상자 8, 문/창 2 | 2.45×3.23m, 높이 2.38m | 평면 (점 49mm) | 없음 (점 덮임 73%) | `meshes/experiments/spatiallm/room_20261110_myroom-charuco/proxy_mesh_s1.png` |
+| SpatialLM mesh s2 | 4s | 벽 4, 상자 9, 문/창 1 | 2.52×3.30m, 높이 2.38m | 평면 (점 56mm) | 없음 (점 덮임 51%) | `meshes/experiments/spatiallm/room_20261110_myroom-charuco/proxy_mesh_s2.png` |
+| SpatialLM points s1 | 6s | 벽 4, 상자 14 | 2.48×3.23m, 높이 2.30m | 평면 (점 47mm) | 없음 (점 덮임 75%) | `meshes/experiments/spatiallm/room_20261110_myroom-charuco/proxy_points_s1.png` |
+| SpatialLM points s2 | 6s | 벽 4, 상자 15 | 2.48×3.23m, 높이 2.28m | 평면 (점 48mm) | 없음 (점 덮임 74%) | `meshes/experiments/spatiallm/room_20261110_myroom-charuco/proxy_points_s2.png` |
+
+- **평면+상자 (RANSAC)**: 3초, 방 크기 +2%/−1%, 높이 2.37m. 벽에 구멍이 없고 삼각형 수백 개라 충돌체·가림용으로 가장 실용적. 가구 상자는 위에서 본 높이 지도(2.5D)로 나눔 (VGGT 점 잡음 때문에 3D DBSCAN 은 방 전체를 한 덩어리로 묶었음). 볼록한 방 가정
+- **Taubin 스무딩**: 국소 거칠기 13.6 → 12.8mm(t30), 벽 전체 휨(30mm)은 그대로. 경계 정점을 고정해야 함 (Open3D 기본 Taubin 은 바닥 메우기 조각·구멍 가장자리를 오그라뜨림: 열린 경계 524m → 177m). 2만 삼각형까지 줄여도 지표 변화 없음 → Unity 충돌체용으로 `t30-s50k`/`s20k` 추천
+- **2DGS**: 학습 46.8분(GPU 0, 30k 반복, 가우시안 176만) + 메시 15초. 색은 좋으나 방 안에 떠다니는 조각이 많고 벽 덮임 54%(원본 66%), 거칠기 16mm 로 **원본 TSDF 보다 나쁨**. 원인: VGGT 포즈 오차(1600px 기준 재투영 4.6px). BA 는 흰 벽 SIFT 매칭 부족으로 발산해 기각(점 3,122개, 정렬 배율 0.73, 카메라 이동 평균 20cm·최대 1.8m) → 포즈를 먼저 개선해야 의미 있음
+- **SpatialLM 1.1 (Qwen-0.5B)**: 추론 5~6초(GPU 1, 1.7GB, 모델 로드 4초). 벽 4개는 시드와 무관하게 안정(방 2.45~2.48×3.23~3.25m), 높이 2.28~2.30m 로 RANSAC(2.37m)보다 낮음. 가구 종류(bed, desk, bookcase, computer, curtain 등)를 주는 게 장점이나 시드마다 상자 11~15개로 달라지고, 메시 표면 샘플을 넣으면 `tub`(욕조) 오분류가 섞임 → 점구름 입력이 나음. 벽 아래 끝이 y=0.06m (모델의 2.5cm 양자화·최솟값 이동 영향, `stats.floor_y_m`)
+
+### 손 보드 후보 검출 거리 (합성, `python -m cv.calib.handheld_range`, 전체 표 `${SHARED_DIR}/charuco/handheld_range.md`)
+
+천장 모서리 카메라(높이 2.3m, OV9281 1280×800 모노, 저대비·흐림·잡음) → 가슴 높이(1.2m)에 세워 든 A3 보드. 값 = yaw 0/30/45/60° 별 검출 코너 비율.
+검출 설정 = 작은 마커용 매개변수 + 2배 확대 (OpenCV 기본 설정이면 70° 렌즈 3m 에서 67~83% 로 떨어짐).
+
+| 보드 (A3) | 코너 | 렌즈 수평 70° 2.5m | 70° 3.0m | 70° 3.5m | 렌즈 수평 90° 2.0m | 90° 2.5m |
+|---|---:|---|---|---|---|---|
+| **3×4, 칸 95mm (채택)** | 6 | 100/100/100/46% | 100/100/100/0% | 100/100/46/0% | 100/100/83/4% | 100/46/25/0% |
+| 3×4, 칸 90mm | 6 | 100/100/100/29% | 100/100/96/0% | 100/83/21/0% | 100/100/83/0% | 67/17/0/0% |
+| 3×5, 칸 76mm | 8 | 100/100/81/0% | 88/75/3/0% | 50/9/0/0% | 100/47/9/0% | 16/0/0/0% |
+| 4×5, 칸 70mm | 12 | 100/92/69/0% | 79/38/2/0% | 10/4/0/0% | 62/21/4/0% | 0% |
+| 5×7, 칸 50mm (벽 보드와 같음) | 24 | 0% | 0% | 0% | 0% | 0% |
+
+→ A3 에서는 칸을 최대로 키운 3×4(95mm)가 유일하게 방 가운데(약 2.3m)~맞은편(3.5m)까지 닿음 (70° 렌즈, 보드를 카메라 쪽으로 45° 이내로 향할 때). 90° 렌즈면 2m 정도까지.
 
 ### A3 보드(칸 50mm) 검출 거리 (합성, 벽 부착, 값 = 검출 코너/24, 방위 4개)
 
@@ -64,6 +118,7 @@
 
 ## 상대 세션에 요청
 
+- (unity, 선택) 메시 개선 실험 결과가 `${SHARED_DIR}/meshes/experiments/` 에 있습니다. `room_latest`는 바꾸지 않았습니다. 특히 `proxy-ransac/room_20261110_myroom-charuco/proxy.glb`(벽 구멍 없는 평면+상자, 같은 월드 좌표)는 지금 보조 바닥 대신/함께 충돌체로 시험해볼 만합니다. 형식은 interfaces.md 2-1절 (`proxy.json`: 평면·상자·문창, Unity 변환은 glTFast 규칙 한 곳에서). 시험 결과를 status-unity.md 에 적어주시면 어느 것을 최신본으로 올릴지 정하는 데 씁니다
 - (unity 요청 반영) `room_latest.json`에 `source`(`"real"`=사용자 방 사진 / `"sample"`=예제), `scale_method`(`charuco`/`room-size`/`camera-height`/`factor`), `triangles`, `created_at` 넣음. `room_latest.glb`/`.json`은 임시 파일에 쓴 뒤 `os.replace`로 교체
 - (unity) `room_latest.glb`는 지금 VGGT 예제 침실(사용자 방 아님)입니다. glTFast 로드/`MeshCollider` 시험용으로 쓰고, 실제 방 메시가 올라오면 같은 이름으로 교체됩니다. `room_latest.json`의 `source_images`, `created_at`으로 구분할 수 있습니다.
 - (unity) 메시 형식: 단일 메시, `POSITION`/`NORMAL`/`COLOR_0`(float RGB, **선형 색공간**, glTF 규약), uint32 인덱스, 머티리얼 1개(흰색, metallic 0, roughness 1, `doubleSided: true`). 정점 색 셰이더는 COLOR_0를 선형 값으로 그대로 쓰면 됩니다 (sRGB 디코드 하지 않음).
@@ -71,11 +126,21 @@
 
 ## 사용자 확인 필요
 
+- 메시 실험 중 `room_latest`로 올릴 것이 있는지 (추천: 충돌체는 `proxy.glb` 또는 `smooth_t30-s50k.glb`, 표시용은 원본 유지). 2DGS 는 포즈 개선 전에는 비추천
+- OV9281 렌즈 화각 (수평 70° 대 90° 이상): 손 보드 검출 거리가 크게 달라짐. 렌즈 사양 또는 실제 캘리브레이션 후 확인
+- 손 보드 인쇄 후 실측: `python -m cv.calib.make_charuco --config charuco_handheld.yaml --set-measured <칸 mm>` (폼보드에 붙여 평평하게)
+- 카메라 MJPG 모드가 1280×720 / 640×400 등으로 보고됨 (사양 1280×800). 캡처 작업 때 전체 해상도 모드 확인 필요
+- 저장소 루트의 `202611231101.txt`(사용자 메모로 보임)는 커밋하지 않고 그대로 둠
 - CLAUDE.md 5절, PROJECT_BRIEF.md에는 아직 "월드 원점은 (바닥의) ChArUco 보드 중심"으로 남아 있음 → 새 정의(보드 중심의 바닥 투영)로 맞출지 확인 필요 (공유 파일이라 수정 안 함)
 - `.env`의 `VGGT_WEIGHTS`가 비어 있음. 현재 가중치는 홈 캐시 `~/.cache/huggingface/hub/models--facebook--VGGT-1B/snapshots/<hash>/model.safetensors`에 있어 테스트 때는 명령줄에서 지정함
 
 ## 알려진 한계
 
+- 2DGS/SpatialLM 라이선스: 2DGS = Inria/MPII Gaussian-Splatting 라이선스(비상업 연구용), SpatialLM1.1 = 모델은 Qwen2.5 기반 Apache-2.0 이지만 Sonata 점구름 인코더 가중치가 CC-BY-NC-4.0(비상업), Llama 변형은 Llama 3.2 라이선스. 공개·상업 사용 전 재확인 필요
+- 2DGS: VGGT 포즈만으로는 표면이 흐림. COLMAP BA 는 흰 벽에서 매칭이 적어 발산(자동 기각 기준: 배율 ±5%, 카메라 이동 평균 5cm, 회전 3°, BA 후 점 5,000개). 포즈 개선(더 많은 겹침 촬영, 다른 특징점/매칭) 후 재시도 필요
+- proxy-ransac: 바닥 다각형 = 경계 벽 반평면의 교집합 → 볼록한 방만. 가구 상자는 2.5D 라 책상 아래 같은 빈 공간도 채움(아래가 0.8m 미만이면 바닥까지 내림)
+- SpatialLM: 생성 모델이라 시드마다 결과가 다름(`--seeds`로 여러 번), 실내 중국식 아파트 데이터로 학습되어 종류 오분류 있음
+- 미리보기(Open3D 오프스크린, Vulkan)는 큰 지오메트리 직후나 GPU 가 바쁠 때 빈 프레임을 낼 수 있어 0 이 아닐 때까지 다시 그림
 - **VGGT에 세로 사진을 그대로 넣으면 fx/fy를 틀리게 예측** (실측: fx 262 / fy 346, EXIF 참값 344 → 보드 재투영 오차 최대 45px). 이제 전부 세로면 반시계 90° 돌려 넣음(`load_images(rotate_portrait=True)`): fx≈fy≈344, 재투영 중앙 1.8px. 바닥 RANSAC의 중력 힌트도 회전에 맞춰 카메라 +x 사용
 - 가로/세로가 섞이면 다수 방향만 사용 (`--keep-mixed-orientation`으로 끌 수 있음, 그 경우 정사각 패딩)
 
@@ -88,12 +153,15 @@
 
 ## 규약 변경
 
+- **2026-11-23 interfaces.md 2절 실험 산출물 규칙 + 2-1절 방 프록시(`proxy.json`) 추가 (사용자 요청)**: 실험 결과는 `${SHARED_DIR}/meshes/experiments/<방법>/<메시 이름>/`, `room_latest`는 건드리지 않음. `proxy.json` = 평면(바닥/천장/벽, 법선은 방 안쪽, `n·p+d=0`, 다각형은 방 안에서 반시계) + 상자(center/size/yaw, glTF 쿼터니언) + 문/창. 좌표는 기존 월드 그대로, Unity 는 glTFast 규칙(`x→−x`, 쿼터니언 `(x,−y,−z,w)`)으로 한 곳에서만
 - **2026-11-10 월드 좌표계 정의 변경 (사용자 확인, interfaces.md 1절)**: ChArUco 보드를 바닥 → 벽(A3, 칸 50mm)으로 옮김. +Y = 바닥 RANSAC 법선(바닥 y=0), 원점 = 보드 중심을 바닥에 내린 점, +X = 보드 +X의 바닥 투영, +Z = X×Y(방 안쪽). `room_latest.json`에 `board_center_height_m` 추가. unity 쪽 축 처리는 그대로(glTFast 자동 변환만)
 
 ## 작업 기록
 
 | 시각 | 내용 |
 |---|---|
+| 2026-11-24 00:20 | 메시 개선 실험 4종 + 비교표, interfaces.md proxy.json 정의, 손 ChArUco 보드(3×4 95mm, 17~22번) PDF·두 보드 구분 검출, 2DGS/SpatialLM 별도 환경. 사용자 수정(가상환경 경로 이동, CLAUDE.md 규칙) 커밋 |
+| 2026-11-14 18:00 | 고정 카메라 4대: 1대가 안 뜨던 원인 = 연장 케이블 불량(꽂아도 커널 로그 없음, 직결 시 정상) → 교체 후 4대 인식. 4대 동시 MJPG 1280×720 30.2fps, 오류 없음. 4대 시리얼 모두 SN0001 → by-path 로 구분, Bus 1 에 2대(포트 5·7)가 같은 컨트롤러 공유 |
 | 2026-11-09 | 상태 파일 생성 |
 | 2026-11-09 17:45 | ChArUco 5×7, DICT_4X4_50, 칸 35mm/마커 26mm, A4 PDF/PNG 생성 (`python -m cv.calib.make_charuco`) |
 | 2026-11-09 18:05 | 환경 확인(check_env) 통과, trimesh/python-dotenv/vggt 설치, VGGT N=1~200 메모리/시간 측정 |
