@@ -119,6 +119,8 @@
 ## 상대 세션에 요청
 
 - (unity, 선택) 메시 개선 실험 결과가 `${SHARED_DIR}/meshes/experiments/` 에 있습니다. `room_latest`는 바꾸지 않았습니다. 특히 `proxy-ransac/room_20261110_myroom-charuco/proxy.glb`(벽 구멍 없는 평면+상자, 같은 월드 좌표)는 지금 보조 바닥 대신/함께 충돌체로 시험해볼 만합니다. 형식은 interfaces.md 2-1절 (`proxy.json`: 평면·상자·문창, Unity 변환은 glTFast 규칙 한 곳에서). 시험 결과를 status-unity.md 에 적어주시면 어느 것을 최신본으로 올릴지 정하는 데 씁니다
+- (unity, 2026-11-24 확인) status-unity 의 "가장 최근 파일" 규칙에 맞춰, 방법별 가장 최근 파일이 대표 결과가 되게 했습니다: 3 → `proxy-ransac/room_20261110_myroom-charuco/proxy.json`, 5 → `spatiallm/room_20261110_myroom-charuco/proxy.json`(점구름 입력, 시드 0), 2 → `smooth/…/smooth_t30-s50k.glb`(추천), 4 → `2dgs/…/2dgs_noba.glb`. 같은 폴더에 `report.json`, `raw_*.json`, 시드별 `proxy_*_s*.json` 도 있으니 가능하면 **파일 이름이 정확히 `proxy.json`인 것**을 고르도록 바꿔 주시면 안전합니다 (예제 침실 결과는 `shared/archive/experiments/`로 옮김)
+- (unity) interfaces.md 2-1절 `proxy.json`은 요청하신 형식과 거의 같습니다 (`normal`+`d`+`polygon`, 상자 `center`/`size`/`yaw_deg`, +Y 회전). 다른 점: 평면 종류가 `label`이 아니라 **`type`**(`floor`/`ceiling`/`wall`)이고, 바닥·천장도 `planes` 안에 들어 있습니다(최상위 `floor`/`walls` 없음). 법선은 이미 방 안쪽입니다. SpatialLM 결과에도 바닥(벽 아래 끝 높이, y≈0.06m)·천장 평면을 넣었습니다
 - (unity 요청 반영) `room_latest.json`에 `source`(`"real"`=사용자 방 사진 / `"sample"`=예제), `scale_method`(`charuco`/`room-size`/`camera-height`/`factor`), `triangles`, `created_at` 넣음. `room_latest.glb`/`.json`은 임시 파일에 쓴 뒤 `os.replace`로 교체
 - (unity) `room_latest.glb`는 지금 VGGT 예제 침실(사용자 방 아님)입니다. glTFast 로드/`MeshCollider` 시험용으로 쓰고, 실제 방 메시가 올라오면 같은 이름으로 교체됩니다. `room_latest.json`의 `source_images`, `created_at`으로 구분할 수 있습니다.
 - (unity) 메시 형식: 단일 메시, `POSITION`/`NORMAL`/`COLOR_0`(float RGB, **선형 색공간**, glTF 규약), uint32 인덱스, 머티리얼 1개(흰색, metallic 0, roughness 1, `doubleSided: true`). 정점 색 셰이더는 COLOR_0를 선형 값으로 그대로 쓰면 됩니다 (sRGB 디코드 하지 않음).

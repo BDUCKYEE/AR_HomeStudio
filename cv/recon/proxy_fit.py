@@ -463,6 +463,7 @@ def main() -> None:
            f"(추정 {proxy['stats']['walls_estimated']}), 상자 {len(proxy['boxes'])}개, {proxy['stats']['time_s']}s")
     for p in proxy["planes"]:
         ex.log(f"  {p['id']:8s} 넓이 {p['area_m2']:.2f}m²  rms {p['rms_m']}  덮임 {p['coverage']:.0%}")
+    (out / "proxy.json").touch()   # unity 는 경로에 proxy 가 든 가장 최근 .json 을 읽으므로 proxy.json 을 마지막으로
     ex.log(f"완료 → {out}")
 
 

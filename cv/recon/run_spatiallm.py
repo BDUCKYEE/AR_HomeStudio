@@ -198,6 +198,8 @@ def main() -> None:
                f"{sum(o['type'] == 'door' for o in proxy['openings'])}, 창 {sum(o['type'] == 'window' for o in proxy['openings'])}, "
                f"상자 {len(proxy['boxes'])} {proxy['stats']['labels']}, 방 {r['size_m']} 높이 {r['height_m']}, "
                f"추론 {raw['time_infer_s']}s (로드 {raw['time_load_s']}s, {raw['gpu_peak_gb']}GB) → {name}.json")
+    if (out / "proxy.json").exists():
+        (out / "proxy.json").touch()   # unity 는 경로에 spatiallm 이 든 가장 최근 .json 을 읽음 → 기본 결과를 마지막으로
 
 
 if __name__ == "__main__":

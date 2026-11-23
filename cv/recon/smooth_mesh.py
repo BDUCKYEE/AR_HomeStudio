@@ -23,7 +23,7 @@ import open3d as o3d
 
 from cv.recon import experiments as ex
 
-DEFAULT_VARIANTS = ["orig", "t10", "t30", "t100", "t30-s50k", "t30-s20k"]
+DEFAULT_VARIANTS = ["orig", "t10", "t30", "t100", "t30-s20k", "t30-s50k"]   # 추천(t30-s50k)을 마지막에 → unity 가 가장 최근 파일로 읽음
 
 
 def taubin(V: np.ndarray, F: np.ndarray, iters: int, lam: float = 0.5, mu: float = -0.53) -> np.ndarray:
