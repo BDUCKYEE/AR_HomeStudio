@@ -67,6 +67,7 @@
 - GPU 0은 VGGT/Open3D, GPU 1은 실시간 추적에 씁니다. `CUDA_VISIBLE_DEVICES`로 명시합니다.
 - 헤드리스 환경이므로 시각화는 파일 저장(이미지, `.glb`)이나 메인 컴퓨터에서 확인합니다.
 - 큰 산출물은 `SHARED_DIR` 아래 `meshes/`, `captures/` 등에 저장합니다.
+- torch 2.3.1, torchvision 0.18.1, numpy<2를 고정한다. 패키지를 설치할 때는 uv pip install <패키지> "numpy<2"처럼 제약을 같이 걸고, 설치 후 numpy 버전을 반드시 확인한다
 
 ### unity 세션 (메인 컴퓨터)
 
