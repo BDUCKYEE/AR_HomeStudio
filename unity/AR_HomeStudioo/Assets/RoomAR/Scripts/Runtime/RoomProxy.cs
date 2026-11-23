@@ -12,7 +12,8 @@ namespace RoomAR
     ///   glTF → Unity 변환은 glTFast와 같은 규칙(X축 반전)으로 이 파일의 ToUnity* 함수에서만 한 번 합니다.
     ///   (최상위 "frame"에 "unity"가 들어 있으면 변환하지 않음)
     ///
-    /// interfaces.md에 형식이 확정되기 전이라 아래 표기를 모두 받습니다 (모든 좌표·방향은 glTF 월드):
+    /// 기준 형식은 interfaces.md 2-1절("format": "roomar-proxy": planes[type, normal, d, polygon], boxes[center, size, yaw_deg, rotation_xyzw]).
+    /// 그 밖에 아래 표기도 받습니다 (모든 좌표·방향은 glTF 월드):
     ///   planes/floor/ceiling: { "label", "normal":[x,y,z], "point":[x,y,z] | "d" (n·p + d = 0) | "equation":[a,b,c,d],
     ///                           "polygon"/"corners"/"points":[[x,y,z],...] | "center"+"size":[w,h] (없으면 방 전체를 덮는 크기) }
     ///   boxes/objects/bboxes: { "label", "center":[x,y,z], "size":[sx,sy,sz] | "half_size"/"extent" | "min"+"max",
@@ -75,7 +76,9 @@ namespace RoomAR
             void Add(Dictionary<string, object> d, Kind? kind, string key)
             {
                 if (d == null) { r.Ignored++; return; }
-                string label = MiniJson.GetString(d, "label", "class", "category", "name") ?? key;
+                // interfaces.md 2-1: 평면 종류는 "type"(floor/ceiling/wall), 상자 종류는 "label"
+                string label = MiniJson.GetString(d, "label", "class", "category", "name") ??
+                               (kind == Kind.Plane ? MiniJson.GetString(d, "type", "id") : null) ?? MiniJson.GetString(d, "id") ?? key;
                 Kind? k = kind ?? TypeOf(MiniJson.GetString(d, "type", "kind", "shape"));
                 try
                 {
@@ -101,7 +104,7 @@ namespace RoomAR
             Each("bboxes", Kind.Box);
             Each("shapes", null);
             Each("primitives", null);
-            foreach (var skip in new[] { "doors", "windows" })
+            foreach (var skip in new[] { "doors", "windows", "openings" })
                 if (MiniJson.Get(root, skip) is List<object> l && l.Count > 0) { r.Ignored += l.Count; r.Warnings.Add($"{skip} {l.Count}개는 충돌체로 만들지 않음"); }
             if (r.Shapes.Count == 0) r.Warnings.Add("충돌체로 만들 항목이 없음");
             return r;
@@ -214,7 +217,7 @@ namespace RoomAR
             size = new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z));
 
             Quaternion rot = Quaternion.identity;
-            float[] q = MiniJson.GetFloats(d, "rotation", "quaternion", "quat");
+            float[] q = MiniJson.GetFloats(d, "rotation_xyzw", "rotation", "quaternion", "quat");
             var rList = MiniJson.AsList(MiniJson.Get(d, "R", "rotation_matrix"));
             float? yawDeg = MiniJson.GetFloat(d, "yaw_deg", "yaw_degrees", "angle_deg");
             float? yawRad = MiniJson.GetFloat(d, "yaw", "angle", "heading");

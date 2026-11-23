@@ -27,7 +27,8 @@ namespace RoomAR
             public string[] Include, Exclude;
         }
 
-        /// <summary>experiments/ 기준 상대 경로(소문자)에 Include 중 하나가 있고 Exclude가 없는 파일. 여러 개면 가장 최근 것.</summary>
+        /// <summary>experiments/ 기준 상대 경로(소문자)에 Include 중 하나가 있고 Exclude가 없는 파일.
+        /// 여러 개면 원본 메시 이름 폴더 → 이름이 proxy.json(json) → 가장 최근 순.</summary>
         public static readonly Spec[] Specs =
         {
             new() { Mode = CollisionMode.Original,   Name = "원본 메시" },
@@ -105,6 +106,8 @@ namespace RoomAR
             if (mode == CollisionMode.Original) return null;
             string dir = ExperimentsDir;
             if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return null;
+            // interfaces.md 2절: experiments/<방법>/<원본 메시 이름>/... → 지금 보이는 원본 메시의 폴더를 우선
+            string stem = Loader?.Info?.File != null ? Path.GetFileNameWithoutExtension(Loader.Info.File).ToLowerInvariant() : null;
             try
             {
                 return Directory.EnumerateFiles(dir, "*" + spec.Ext, SearchOption.AllDirectories)
@@ -112,9 +115,13 @@ namespace RoomAR
                     {
                         string rel = p.Substring(dir.Length).Replace('\\', '/').ToLowerInvariant();
                         if (rel.Contains("/.") || rel.EndsWith(".tmp" + spec.Ext)) return false; // 숨김/임시 파일 제외
+                        if (rel.Contains("/archive/")) return false;
                         return spec.Include.Any(rel.Contains) && !spec.Exclude.Any(rel.Contains);
                     })
-                    .OrderByDescending(File.GetLastWriteTimeUtc)
+                    // 우선순위: 같은 원본 메시 폴더 → (json) 이름이 정확히 proxy.json → 가장 최근
+                    .OrderByDescending(p => stem != null && p.Replace('\\', '/').ToLowerInvariant().Contains("/" + stem + "/"))
+                    .ThenByDescending(p => spec.Ext != ".json" || Path.GetFileName(p).Equals("proxy.json", StringComparison.OrdinalIgnoreCase))
+                    .ThenByDescending(File.GetLastWriteTimeUtc)
                     .FirstOrDefault();
             }
             catch (Exception e) { Debug.LogWarning($"[RoomAR] experiments 검색 실패: {e.Message}"); return null; }

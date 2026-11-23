@@ -4,9 +4,9 @@
 
 ## 현재 상태
 
-- 마지막 갱신: 2026-11-23 23:20
-- 단계: **충돌 방식 비교 준비 완료** (1~5 키 전환, proxy.json 로더, 배치 비교 테스트). 합성 데이터로 확인함. cv의 `experiments/` 결과 대기 중
-- 막힌 점: 메인 컴퓨터에서 `Z:`(Samba)가 "액세스 거부" → 사용자 재연결 필요. `proxy.json` 형식이 interfaces.md에 아직 없음 → 아래 "상대 세션에 요청"의 형식으로 받도록 구현
+- 마지막 갱신: 2026-11-24 00:25
+- 단계: **충돌 방식 비교 준비 완료** (1~5 키 전환, proxy.json 로더, 배치 비교 테스트). interfaces.md 2-1절 `proxy.json` 형식 반영, 합성 데이터로 확인. cv `experiments/` 실제 결과 비교 대기
+- 막힌 점: 메인 컴퓨터에서 `Z:`(Samba)가 연결 끊김("액세스 거부") → 사용자 재연결 필요. 연결되면 바로 실제 결과로 비교표 작성
 - 사용 중인 메시: `room_20261110_myroom-charuco.glb` (`source: real`, `charuco`, 보드 중심 높이 0.8954m). 보조 바닥(y=0)은 계속 켬 (X쪽 벽 구멍 대비)
 - 환경: Unity 6000.3.28f1, URP 17.3, Input System 1.20.1 (Active Input Handling = Input System Package)
 
@@ -26,7 +26,7 @@
 
 ### 충돌 방식 비교
 
-`${SHARED_DIR}/meshes/experiments/` 아래에서 방식마다 이름 규칙에 맞는 **가장 최근** 파일을 씁니다 (하위 폴더 포함, 경로 소문자 기준):
+`${SHARED_DIR}/meshes/experiments/` 아래에서 방식마다 이름 규칙에 맞는 파일을 씁니다 (하위 폴더 포함, 경로 소문자 기준, `archive/` 제외). 여러 개면 ① 지금 보이는 원본 메시 이름 폴더(`<방법>/<room_latest.json의 file>/`) ② json은 이름이 정확히 `proxy.json` ③ 가장 최근 순으로 고릅니다:
 
 | 키 | 방식 | 찾는 파일 |
 |---|---|---|
@@ -53,6 +53,7 @@
 | 5 | SpatialLM (`spatiallm/proxy.json`, 벽 4 + 바닥 + 책상 yaw 90°) | 0 / 0 | 0 / 0 / 0 | 79% (천장 없음) | 0.0 / 0.0 cm |
 
 - 책상 상자(glTF +X 쪽)가 원본과 거리 차 0.0cm로 맞아서, proxy.json의 X 반전(glTF → Unity)이 메시(glTFast)와 같은 방향임을 확인했습니다. 평면 표기(`d`, `equation`, `polygon`, `point`+`size`)와 상자 표기(`min/max`, `center/size/yaw_deg`)가 모두 같은 결과를 냈습니다.
+- 2026-11-24 00:20 interfaces.md 2-1절 형식으로 다시 확인: `experiments/<방법>/room_test/` 구조, `planes[].type`(floor/ceiling/wall), 상자 `yaw_deg` 90° + `rotation_xyzw`, `openings`. 더 최근에 쓴 `report.json`, `proxy_points_s1.json`이 있어도 `proxy.json`을 골랐고, 결과는 위 표와 같습니다 (평면+상자·SpatialLM 광선 일치 100%, 거리 차 0.0cm).
 - 2DGS가 원본보다 바닥 관통이 많은 것은, 요철이 있는 바닥에서 공이 옆으로 튀고 굴러 구멍에 들어갔기 때문입니다 (`-compareVerbose`로 확인: 구멍에서 0.5~0.8m 떨어진 곳에서 떨어진 공이 구멍 근처에서 빠짐). 실제 메시에서도 거친 바닥은 구멍만큼 문제가 될 수 있습니다.
 
 ### 실제 방 메시 검증 결과 (2026-11-10 11:32, 배치 모드)
@@ -179,7 +180,7 @@
 - 가능하면 json에 `triangles`, `scale_method`(ChArUco/추정), 생성 시각도 넣어 주십시오. 검증 보고서에 함께 기록하겠습니다.
 - `room_latest.glb`는 임시 이름으로 쓴 뒤 rename으로 교체해 주십시오. Unity가 L 키로 다시 불러올 때 쓰다 만 파일을 읽지 않게 하기 위해서입니다. 쓰다 만 파일을 읽더라도 Unity는 기존 메시를 유지합니다.
 
-- **`proxy.json` 형식 (interfaces.md에 아직 없음)**: Unity는 우선 아래 형식을 받도록 만들었습니다. 다르게 정하셨다면 interfaces.md나 cv 상태 파일에 적어 주시면 맞추겠습니다. 좌표는 방 메시와 같은 월드 좌표계(glTF, Y 위, 미터, 같은 원점)이고 Z 위(SpatialLM 원본)라면 변환해서 넣어 주십시오.
+- ~~`proxy.json` 형식~~ → interfaces.md 2-1절로 확정, 반영함 (2026-11-24). `type`으로 평면 종류 판단, `rotation_xyzw`/`yaw_deg`, `openings` 무시, 파일 이름 `proxy.json` 우선. 아래는 처음 제안했던 형식이고 지금도 읽을 수 있습니다.
   ```json
   {
     "frame": "gltf",
@@ -211,3 +212,4 @@
 | 2026-11-10 11:50 | 시작 카메라 보정: 새 원점에서는 씬 기본 카메라(z=−1)가 보드 벽 밖 → 첫 로드 때 범위 밖이면 방 안쪽 끝 (−0.12, 1.5, 2.89)에서 보드 벽을 바라보게 이동. 로더 테스트 PASS |
 | 2026-11-10 11:45 | 11:31 `source: real` 감지 → `room_20261110_myroom-charuco.glb` 배치 검증 WARN(크기·바닥·보드 OK), 로더 테스트 PASS, 보드 (0, 0.895, 0) 표시 확인 |
 | 2026-11-23 23:20 | 충돌 방식 전환(CollisionModeSwitcher, 1~5/G), proxy.json 로더(RoomProxy, MiniJson), 비교 테스트(CollisionCompareTest) 추가. 합성 데이터로 5개 방식 확인, 기존 로더 테스트 PASS. `Z:` 액세스 거부라 실제 experiments 결과는 대기 중 (백그라운드 대기 시작) |
+| 2026-11-24 00:25 | cv 푸시 감지 → interfaces.md 2-1절 `proxy.json` 반영(`type`, `rotation_xyzw`, `openings`), 파일 선택을 원본 메시 폴더 → `proxy.json` → 최근 순으로 변경. 합성 데이터 재확인. `Z:` 여전히 끊김 → 대기 재시작 |
