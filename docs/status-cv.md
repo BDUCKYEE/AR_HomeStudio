@@ -4,13 +4,20 @@
 
 ## 현재 상태
 
-- 마지막 갱신: 2026-11-24 00:20
-- 단계: **메시 개선 실험 완료** (평면+상자 프록시, Taubin 스무딩, 2DGS, SpatialLM — 아래 비교표). `room_latest`는 그대로.
-  손에 드는 ChArUco 보드(A3, 마커 17~22번) PDF 준비. 다음: 고정 카메라 초점 맞춤, 내부 파라미터 캘리브레이션 (사용자가 나중에 진행)
-- 최신 메시: `room_latest.glb` = `room_20261110_myroom-charuco.glb` (`source: real`, `scale_method: charuco`), 153,258 삼각형(바닥 메우기 +3,258 포함), 보드 중심 높이 0.8954m
-- 고정 카메라: OV9281 4대 USB 인식·동시 캡처 확인 (2026-11-14, 아래 작업 기록). 4대 모두 시리얼이 `SN0001`로 같아 **`/dev/v4l/by-path/`(꽂은 포트)로 구분해야 함**
+- 마지막 갱신: 2026-11-25 00:10
+- 단계: **벽 보드를 새 위치에 고정 → 방 메시 재생성(room_latest 교체)**, 고정 카메라 초점·각도 맞춤 시작. **cam2 케이스 초점 나사 파손 → 새 케이스 주문, 약 5일 뒤(~2026-11-30) 재장착 후 이어서 진행**
+- 최신 메시: `room_latest.glb` = `room_20261124_myroom2-charuco.glb` (`source: real`, `charuco`), 153,757 삼각형, 보드 중심 높이 **0.9046m**. 입력 `scans/20261124` 158장 중 120장(균등 추림), 전체 72초
+  - 검증 전 항목 PASS. 벽 기준 방 크기(proxy_fit) 2.60×3.29m, 높이 2.37m (실측 2.5×3.3 대비 +4%/−0.3%). validate 의 백분위 범위는 3.34×2.88m 로 나오는데 벽 밖 점(문 등) 때문
+  - ChArUco: 20시점, 코너 24/24, 재투영 2.1px, 정합 잔차 5.0mm(이전 2.3), 휨 4.2mm, 보드 법선-바닥 88.1°, `z_into_room: true`
+  - **보드를 옮겼으므로 월드 좌표계가 바뀜** (이전 20261110 메시·실험 결과와 좌표가 다름). 벽이 월드 축에서 약 4° 돌아가 보임 (보드 +X 가 벽과 완전히 나란하지 않음, 규약상 문제 없음)
+- 고정 카메라: 4대 모두 MJPG 1280×720 29fps 동시 캡처 OK. **4대 모두 옆으로 달려 있음**(반시계 90° 돌리면 바로 섬). 이름 ↔ 포트 `cv/config/cameras.yaml`: 지금은 cam2 = `0e:00.3-2`만 확정, cam1/3/4 는 다음 세션
+  - 초점(가운데 1/3 라플라시안 분산, 마지막 값): `0b:00.0-5` 1100 / `0b:00.0-7` 330 / `0f:00.0-1` 300 / cam2 `0e:00.3-2` 상(像)이 안 맺힘(먼지만 또렷 → 렌즈가 거의 빠짐, 원인 = 케이스 나사 파손)
 
 ## READY
+
+- READY: **카메라 미리보기 서버** (초점·각도 맞춤) / `python -m cv.capture.preview_server --host <Tailscale/LAN IP> --port 8091 --rotate ccw` → 다른 컴퓨터 브라우저 `http://<IP>:8091` /
+  4대를 한 영상으로(돌린 보기 1줄), 카메라별 크게 보기(`/cam/<n>`), 3분할 격자·중앙 십자, 초점 수치·최고값 막대, 렌즈 가림 감지(이름 매핑용), `/snap` 4대 사진 저장(`${SHARED_DIR}/captures/aim_<시각>/`), USB 뽑았다 꽂아도 자동 재연결·새 카메라 추가. IP 는 실행 인자로만 (코드·커밋에 없음)
+- READY: **새 방 메시** `room_latest.glb` = `room_20261124_myroom2-charuco.glb` (위 현재 상태), 프록시 `experiments/proxy-ransac/room_20261124_myroom2-charuco/`
 
 - READY: **메시 개선 실험** / 결과 `${SHARED_DIR}/meshes/experiments/<방법>/<메시 이름>/`, 비교표 `experiments/compare_<메시 이름>.md` (아래 표) /
   `python -m cv.recon.proxy_fit` · `smooth_mesh` · `run_2dgs` · `run_spatiallm` · `compare_experiments` (인자 없으면 `room_latest.json`의 메시, 새 방도 같은 명령 한 줄). 예제 침실로도 재실행 확인
@@ -118,6 +125,7 @@
 
 ## 상대 세션에 요청
 
+- **(unity, 2026-11-24) `room_latest` 교체 + 월드 좌표계 변경**: 벽 보드를 새 위치로 옮겨 `room_20261124_myroom2-charuco.glb`로 교체했습니다 (보드 중심 높이 0.8954 → **0.9046m**, 원점·축이 새 보드 기준). 이전 메시 기준으로 맞춘 값(시작 카메라 위치 등)이 있으면 다시 확인해 주세요. `experiments/` 의 2DGS·스무딩·SpatialLM 결과는 아직 이전 메시(이전 좌표) 기준이고, 새 메시는 proxy-ransac 만 만들었습니다 → unity 의 "가장 최근 파일" 규칙으로 키 3 은 새 방 프록시를, 2·4·5 는 이전 방 결과를 읽게 되니 섞어서 비교하지 마세요
 - (unity, 선택) 메시 개선 실험 결과가 `${SHARED_DIR}/meshes/experiments/` 에 있습니다. `room_latest`는 바꾸지 않았습니다. 특히 `proxy-ransac/room_20261110_myroom-charuco/proxy.glb`(벽 구멍 없는 평면+상자, 같은 월드 좌표)는 지금 보조 바닥 대신/함께 충돌체로 시험해볼 만합니다. 형식은 interfaces.md 2-1절 (`proxy.json`: 평면·상자·문창, Unity 변환은 glTFast 규칙 한 곳에서). 시험 결과를 status-unity.md 에 적어주시면 어느 것을 최신본으로 올릴지 정하는 데 씁니다
 - (unity, 2026-11-24 확인) status-unity 의 "가장 최근 파일" 규칙에 맞춰, 방법별 가장 최근 파일이 대표 결과가 되게 했습니다: 3 → `proxy-ransac/room_20261110_myroom-charuco/proxy.json`, 5 → `spatiallm/room_20261110_myroom-charuco/proxy.json`(점구름 입력, 시드 0), 2 → `smooth/…/smooth_t30-s50k.glb`(추천), 4 → `2dgs/…/2dgs_noba.glb`. 같은 폴더에 `report.json`, `raw_*.json`, 시드별 `proxy_*_s*.json` 도 있으니 가능하면 **파일 이름이 정확히 `proxy.json`인 것**을 고르도록 바꿔 주시면 안전합니다 (예제 침실 결과는 `shared/archive/experiments/`로 옮김)
 - (unity) interfaces.md 2-1절 `proxy.json`은 요청하신 형식과 거의 같습니다 (`normal`+`d`+`polygon`, 상자 `center`/`size`/`yaw_deg`, +Y 회전). 다른 점: 평면 종류가 `label`이 아니라 **`type`**(`floor`/`ceiling`/`wall`)이고, 바닥·천장도 `planes` 안에 들어 있습니다(최상위 `floor`/`walls` 없음). 법선은 이미 방 안쪽입니다. SpatialLM 결과에도 바닥(벽 아래 끝 높이, y≈0.06m)·천장 평면을 넣었습니다
@@ -128,6 +136,8 @@
 
 ## 사용자 확인 필요
 
+- cam1/cam3/cam4 ↔ 포트 지정 (`0b:00.0-5`, `0b:00.0-7`, `0f:00.0-1` 중): cam2 재장착 때 렌즈를 cam1→cam4 순서로 3초씩 가리면 기록
+- 새 방 메시로 실험(스무딩/SpatialLM/2DGS)도 다시 돌릴지
 - 메시 실험 중 `room_latest`로 올릴 것이 있는지 (추천: 충돌체는 `proxy.glb` 또는 `smooth_t30-s50k.glb`, 표시용은 원본 유지). 2DGS 는 포즈 개선 전에는 비추천
 - OV9281 렌즈 화각 (수평 70° 대 90° 이상): 손 보드 검출 거리가 크게 달라짐. 렌즈 사양 또는 실제 캘리브레이션 후 확인
 - 손 보드 인쇄 후 실측: `python -m cv.calib.make_charuco --config charuco_handheld.yaml --set-measured <칸 mm>` (폼보드에 붙여 평평하게)
@@ -162,6 +172,7 @@
 
 | 시각 | 내용 |
 |---|---|
+| 2026-11-25 00:10 | 벽 보드 새 위치로 `scans/20261124` 158장 → 메시 재생성(120장), 검증 통과 후 room_latest 교체. 카메라 미리보기 서버(Tailscale, 4대 한 화면, 초점 수치, 자동 재연결) 작성, 초점·각도 맞춤 시작. cam2(`0e:00.3-2`) 케이스 초점 나사 파손 → 케이스 재주문, 약 5일 뒤 재개 |
 | 2026-11-24 00:20 | 메시 개선 실험 4종 + 비교표, interfaces.md proxy.json 정의, 손 ChArUco 보드(3×4 95mm, 17~22번) PDF·두 보드 구분 검출, 2DGS/SpatialLM 별도 환경. 사용자 수정(가상환경 경로 이동, CLAUDE.md 규칙) 커밋 |
 | 2026-11-14 18:00 | 고정 카메라 4대: 1대가 안 뜨던 원인 = 연장 케이블 불량(꽂아도 커널 로그 없음, 직결 시 정상) → 교체 후 4대 인식. 4대 동시 MJPG 1280×720 30.2fps, 오류 없음. 4대 시리얼 모두 SN0001 → by-path 로 구분, Bus 1 에 2대(포트 5·7)가 같은 컨트롤러 공유 |
 | 2026-11-09 | 상태 파일 생성 |
