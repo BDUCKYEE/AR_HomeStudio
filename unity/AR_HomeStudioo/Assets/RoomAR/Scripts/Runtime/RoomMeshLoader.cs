@@ -141,6 +141,9 @@ namespace RoomAR
                 var switcher = GetComponent<CollisionModeSwitcher>();
                 if (switcher == null) switcher = gameObject.AddComponent<CollisionModeSwitcher>();
                 switcher.Apply();
+                if (first && switcher.DefaultMode != switcher.Mode)
+                    await switcher.SetModeAsync(switcher.DefaultMode); // 실패하면 원본 충돌 유지 (화면에 이유 표시)
+                if (this == null) return;
                 string sample = Info.IsSample ? " · 예제 이미지 메시" : Info.Source == "real" ? " · 실제 방" : "";
                 status = $"메시: {Path.GetFileName(path)} ({loadedWriteTime:HH:mm:ss}){sample} · {Time.realtimeSinceStartup - t0:F1}s\n{res.Stats}";
                 Debug.Log($"[RoomAR] {status}");

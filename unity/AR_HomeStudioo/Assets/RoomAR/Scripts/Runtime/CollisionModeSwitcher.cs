@@ -43,6 +43,10 @@ namespace RoomAR
         [Tooltip("비워 두면 ${SHARED_DIR}/meshes/experiments")]
         [SerializeField] string experimentsDirOverride = "";
 
+        [Tooltip("원본 메시를 처음 불러온 뒤 쓸 충돌 방식 (사용자 결정 2026-11-24: 충돌은 평면+상자 프록시, 화면은 원본). 파일이 없으면 원본 유지")]
+        [SerializeField] CollisionMode defaultMode = CollisionMode.PlaneProxy;
+        public CollisionMode DefaultMode => defaultMode;
+
         class Entry
         {
             public string Path;
