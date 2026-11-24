@@ -2,7 +2,7 @@
 
 사용 (메인 .venv):
   python -m cv.recon.export_colmap [대상] [--width 1600] [--out <폴더>]
-  기본 출력: ${SHARED_DIR}/meshes/experiments/2dgs/<이름>/colmap_vggt/{images/, sparse/0/*.txt}
+  기본 출력: ${SHARED_DIR}/meshes/experiments/2dgs/<이름>/colmap_vggt/{images/, sparse/0/*.txt, *.bin}
 
 좌표: COLMAP 의 world 는 우리 월드(glTF, +Y 위, 미터, 바닥 y=0)를 그대로 쓴다. COLMAP 카메라 규약(x 오른쪽,
 y 아래, z 앞, camera-from-world)은 OpenCV 와 같으므로 cameras.json 의 camera_from_world_4x4 를 변환 없이 쓴다.
@@ -35,6 +35,26 @@ def rotmat_to_qvec(R: np.ndarray) -> np.ndarray:
     return -q if q[0] < 0 else q
 
 
+def write_bin(sp: Path, cams: list, imgs: list, P: np.ndarray, rgb: np.ndarray) -> None:
+    """COLMAP 표준 바이너리 (cameras.bin / images.bin / points3D.bin). gsplat 이 쓰는 pycolmap 포크는 텍스트 파서가
+    파이썬 3 에서 깨져 있어(np.array(map(...))) 바이너리를 같이 쓴다. 2DGS 도 bin 을 먼저 읽는다.
+    cams: [(id, w, h, fx, fy, cx, cy)], imgs: [(id, qvec(wxyz), tvec, cam_id, name)]"""
+    import struct
+
+    with open(sp / "cameras.bin", "wb") as f:
+        f.write(struct.pack("<Q", len(cams)))
+        for cid, w, h, fx, fy, cx, cy in cams:
+            f.write(struct.pack("<iiQQdddd", cid, 1, w, h, fx, fy, cx, cy))     # model 1 = PINHOLE
+    with open(sp / "images.bin", "wb") as f:
+        f.write(struct.pack("<Q", len(imgs)))
+        for iid, q, t, cid, name in imgs:
+            f.write(struct.pack("<I7dI", iid, *q, *t, cid) + name.encode() + b"\x00" + struct.pack("<Q", 0))
+    with open(sp / "points3D.bin", "wb") as f:
+        f.write(struct.pack("<Q", len(P)))
+        for j, (p, c) in enumerate(zip(P, rgb)):
+            f.write(struct.pack("<Q3d3BdQ", j + 1, *p, *c, 0.0, 0))
+
+
 def export(src: ex.Source, out: Path, width: int = 1600, max_points: int = 200_000) -> dict:
     from cv.recon.vggt_infer import open_rgb
 
@@ -48,7 +68,7 @@ def export(src: ex.Source, out: Path, width: int = 1600, max_points: int = 200_0
     rot = vw > vh   # build_room: 세로 사진을 가로로 돌려 넣었으면 VGGT 입력이 가로
     (out / "images").mkdir(parents=True, exist_ok=True)
     (out / "sparse" / "0").mkdir(parents=True, exist_ok=True)
-    cam_lines, img_lines = [], []
+    cam_lines, img_lines, cam_b, img_b = [], [], [], []
     size = None
     for i, name in enumerate(cams["images"]):
         im = open_rgb(img_dir / name, rot90=rot and _is_portrait(img_dir / name))
@@ -64,6 +84,8 @@ def export(src: ex.Source, out: Path, width: int = 1600, max_points: int = 200_0
         t = E[i, :3, 3]
         img_lines.append(f"{i + 1} {q[0]:.9f} {q[1]:.9f} {q[2]:.9f} {q[3]:.9f} {t[0]:.9f} {t[1]:.9f} {t[2]:.9f} {i + 1} {dst.name}")
         img_lines.append("")   # 2D 점 없음
+        cam_b.append((i + 1, width, H, fx, fy, cx, cy))
+        img_b.append((i + 1, q, t, i + 1, dst.name))
     sp = out / "sparse" / "0"
     (sp / "cameras.txt").write_text("# Camera list: CAMERA_ID MODEL W H fx fy cx cy\n" + "\n".join(cam_lines) + "\n")
     (sp / "images.txt").write_text("# IMAGE_ID QW QX QY QZ TX TY TZ CAMERA_ID NAME\n" + "\n".join(img_lines) + "\n")
@@ -76,6 +98,7 @@ def export(src: ex.Source, out: Path, width: int = 1600, max_points: int = 200_0
         f.write("# POINT3D_ID X Y Z R G B ERROR TRACK[]\n")
         for j, (p, c) in enumerate(zip(P, rgb)):
             f.write(f"{j + 1} {p[0]:.5f} {p[1]:.5f} {p[2]:.5f} {c[0]} {c[1]} {c[2]} 0\n")
+    write_bin(sp, cam_b, img_b, P, rgb)
     info = {"images": len(cams["images"]), "size": size, "points3D": int(len(P)), "rot90": bool(rot), "dir": str(out)}
     (out / "export.json").write_text(json.dumps(info, indent=1))
     return info

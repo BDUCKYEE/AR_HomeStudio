@@ -70,8 +70,16 @@ python -m cv.recon.proxy_fit            # 1. 평면(바닥/천장/벽 RANSAC) + 
 python -m cv.recon.smooth_mesh          # 2. Taubin 스무딩(경계 고정) / 간소화 → smooth_*.glb
 python -m cv.recon.run_2dgs             # 3. VGGT → COLMAP(+SIFT·BA 시도) → 2DGS 학습(GPU 0) → 메시 → 2dgs_*.glb
 python -m cv.recon.run_spatiallm        # 4. SpatialLM 1.1 (GPU 1) → proxy.json   (--input mesh, --seeds 0 1 2)
+python -m cv.recon.run_hybrid           # SpatialLM 8시드 투표 + 점구름 맞춤 → hybrid/<이름>/proxy_hybrid.json, RANSAC 과 상자별 비교표
+python -m cv.recon.run_3dgs             # 3DGS(gsplat, GPU 0), 포즈 최적화 끔/켬 → PSNR/SSIM/LPIPS, 떠다니는 조각, 렌더 영상
 python -m cv.recon.compare_experiments  # 방법별 비교표 → experiments/compare_<이름>.md
 ```
+
+- 프록시(RANSAC)는 벽 앞 얇은 판(벽 법선 방향 두께 ≤ 0.22m, 벽에서 0.15m 안)과 8cm 보다 얇은 상자를 잡음으로 지우고 `report.json`에 이유를 남깁니다.
+- 하이브리드: 벽·바닥·천장은 RANSAC 평면, 가구는 SpatialLM 투표(시드 절반 이상)로 종류를 정하고 점구름으로 다시 맞춤.
+  옆 가구 점은 RANSAC 상자로 갈라내고, 크기는 SpatialLM 상자 + 25cm 까지만. 그림·커튼·카펫은 맞추지 않음. SpatialLM 이 놓친 RANSAC 상자는 `furniture`로 덧붙임.
+- 3DGS: `envs/gsplat` (Python 3.10, gsplat 1.5.3 미리 빌드 wheel, 공식 `examples/simple_trainer.py`), `bash cv/recon/envs/setup_gsplat.sh`.
+  월드 정규화를 꺼서 가우시안도 월드 좌표 그대로. COLMAP 입력은 `export_colmap`이 txt 와 bin 을 함께 씀 (gsplat 의 pycolmap 포크는 txt 를 못 읽음).
 
 - 2DGS, SpatialLM은 각각 별도 uv 환경(`/storage/AI/cv_project/envs/{2dgs,spatiallm}`)에서 하위 프로세스로 돕니다.
   처음 한 번 `bash cv/recon/envs/setup_2dgs.sh`, `bash cv/recon/envs/setup_spatiallm.sh` (sudo 불필요, 시스템 nvcc 12.4 + gcc-13).

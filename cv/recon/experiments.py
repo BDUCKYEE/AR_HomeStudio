@@ -26,7 +26,7 @@ from PIL import Image, ImageDraw
 from cv.common.config import shared_dir
 from cv.recon.glb import read_glb, write_glb
 
-METHODS = ("proxy-ransac", "smooth", "2dgs", "spatiallm")
+METHODS = ("proxy-ransac", "smooth", "2dgs", "spatiallm", "hybrid", "3dgs")
 
 
 def log(msg: str) -> None:

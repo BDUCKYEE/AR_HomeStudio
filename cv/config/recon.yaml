@@ -64,7 +64,9 @@ proxy:                          # 평면 + 상자 프록시 (python -m cv.recon.
   furniture_join_dh_m: 0.12     # 이웃 칸 높이 차이가 이 값 안이면 같은 가구로 이음
   box_min_area_m2: 0.04         # 상자 바닥 넓이 하한
   box_min_extent_m: 0.15        # 상자 가장 긴 변 하한
-  box_min_thickness_m: 0.04     # 상자 가장 짧은 수평 변 하한 (벽 잡음 띠 제거)
+  box_min_thickness_m: 0.08     # 상자 가장 짧은 수평 변 하한 (얇은 판 잡음 제거, 2026-11-25 0.04 → 0.08)
+  wall_slab_max_m: 0.22         # 벽 앞 얇은 판 제거: 벽 법선 방향 두께가 이 값 이하이고
+  wall_slab_gap_m: 0.15         #   벽에서 이 거리 안에 붙어 있으면 벽 잡음으로 보고 제거
   box_snap_deg: 12              # 벽 방향과 이 각도 안이면 벽 방향으로 맞춤
   box_floor_snap_m: 0.8         # 상자 아래가 이 높이보다 낮으면 바닥(y=0)까지 내림 (침대·책상 옆/아래는 사진에 잘 안 찍혀 판처럼 뜸)
   max_boxes: 40

@@ -4,8 +4,8 @@
 
 ## 현재 상태
 
-- 마지막 갱신: 2026-11-25 00:10
-- 단계: **벽 보드를 새 위치에 고정 → 방 메시 재생성(room_latest 교체)**, 고정 카메라 초점·각도 맞춤 시작. **cam2 케이스 초점 나사 파손 → 새 케이스 주문, 약 5일 뒤(~2026-11-30) 재장착 후 이어서 진행**
+- 마지막 갱신: 2026-11-25 01:15
+- 단계: **메시 고도화 2차 비교 완료** (기존 파이프라인 + 잡음 규칙, SpatialLM+RANSAC 하이브리드, 3DGS 포즈 최적화 끔/켬 — 아래 "2차" 표). 카메라 측량(캘리브레이션)은 cam2 케이스가 오면(약 2026-11-30) 진행
 - 최신 메시: `room_latest.glb` = `room_20261124_myroom2-charuco.glb` (`source: real`, `charuco`), 153,757 삼각형, 보드 중심 높이 **0.9046m**. 입력 `scans/20261124` 158장 중 120장(균등 추림), 전체 72초
   - 검증 전 항목 PASS. 벽 기준 방 크기(proxy_fit) 2.60×3.29m, 높이 2.37m (실측 2.5×3.3 대비 +4%/−0.3%). validate 의 백분위 범위는 3.34×2.88m 로 나오는데 벽 밖 점(문 등) 때문
   - ChArUco: 20시점, 코너 24/24, 재투영 2.1px, 정합 잔차 5.0mm(이전 2.3), 휨 4.2mm, 보드 법선-바닥 88.1°, `z_into_room: true`
@@ -15,6 +15,8 @@
 
 ## READY
 
+- READY: **하이브리드 프록시** `experiments/hybrid/<메시>/proxy_hybrid.json` (+ `.glb`, `preview.png`, `box_compare.md`) / `python -m cv.recon.run_hybrid [메시] [--seeds 8]` / 두 방 모두 RANSAC 상자를 하나도 빠뜨리지 않음, 규약 검사 통과 (단 `method: "hybrid"` 는 interfaces.md 갱신 전, 아래 사용자 확인)
+- READY: **3DGS (gsplat)** `experiments/3dgs/room_20261124_myroom2-charuco/` (`model_{noposeopt,poseopt}`, `3dgs_metrics.json`, 영상) / `python -m cv.recon.run_3dgs [메시]` (GPU 0, 변형당 약 18분), 둘러보기 영상 `gsplat_render_tour.py`, 학습 시점 평가 `gsplat_eval_train.py`. 환경 `bash cv/recon/envs/setup_gsplat.sh` (Python 3.10, gsplat 1.5.3 wheel)
 - READY: **카메라 미리보기 서버** (초점·각도 맞춤) / `python -m cv.capture.preview_server --host <Tailscale/LAN IP> --port 8091 --rotate ccw` → 다른 컴퓨터 브라우저 `http://<IP>:8091` /
   4대를 한 영상으로(돌린 보기 1줄), 카메라별 크게 보기(`/cam/<n>`), 3분할 격자·중앙 십자, 초점 수치·최고값 막대, 렌즈 가림 감지(이름 매핑용), `/snap` 4대 사진 저장(`${SHARED_DIR}/captures/aim_<시각>/`), USB 뽑았다 꽂아도 자동 재연결·새 카메라 추가. IP 는 실행 인자로만 (코드·커밋에 없음)
 - READY: **새 방 메시** `room_latest.glb` = `room_20261124_myroom2-charuco.glb` (위 현재 상태), 프록시 `experiments/proxy-ransac/room_20261124_myroom2-charuco/`
@@ -39,6 +41,34 @@
 - READY: 바닥 메우기 / `build_room --fill-floor auto|on|off` (`recon.yaml` `floor_fill`) / 예제 침실: 바닥 덮임 11% → 5,351칸(5cm) 채움, 법선 100% +Y, validate 바닥 표면 비율 9% → 49%
 - READY: A3 보드 검출 거리 / `python -m cv.calib.charuco_range` / 아래 표
 - READY (임시 메시): `${SHARED_DIR}/meshes/room_latest.glb` + `room_latest.json` / 예제 침실 (unity 쪽 glTFast 로드 시험용) / validate 통과(방 크기 WARN)
+
+### 메시 고도화 비교 2차 (2026-11-25): 지난번 방(20261110) vs 이번 방(20261124, 잡다한 물건 치움, 보드 새 위치)
+
+`python -m cv.recon.compare_experiments <메시>` 전체 표: `${SHARED_DIR}/meshes/experiments/compare_<메시>.md`. 두 방은 보드 위치가 달라 좌표계가 서로 다름.
+
+| 방법 | 지표 | 20261110 (지난번) | 20261124 (이번) |
+|---|---|---|---|
+| 1. 원본 TSDF | 삼각형 / 벽 평면도 RMS / 국소 거칠기 / 벽 덮임 | 153,258 / 30.6mm / 13.6mm / 66% | 153,757 / 29.2mm / 16.2mm / 56% |
+| 1. + 스무딩 `t30-s50k` | 삼각형 / 국소 거칠기 / 벽 덮임 | 5만 / 12.8mm / 66% | 5만 / 15.2mm / 55% |
+| 1. + 평면·상자 `proxy.json` (RANSAC) | 방 크기·높이 / 상자 (벽 앞 판 제거) | 2.55×3.27m, 2.37m / 12개 (−6) | 2.60×3.29m, 2.37m / 10개 (−5) |
+| 2. 하이브리드 `proxy_hybrid.json` | 시드별 SpatialLM 상자 수 (8시드) | 11~17 | **9~14** |
+| | 투표 통과 / 그중 가구 / RANSAC 에서 보탬 / 최종 상자 | 14 / 8 / 6 / 20 | 11 / 6 / 5 / 16 |
+| | 가구 상자의 RANSAC 대응 3D IoU 평균 | 0.54 | 0.40 |
+| | 종류 | bed, desk, bookcase×2, cupboard, chair, computer, 그림·커튼·에어컨 | bed, desk, bookcase×3, computer, carpet, 그림·커튼 |
+| | 시간 (SpatialLM 8회 포함) | 88초 | 87초 |
+| 3. 3DGS (gsplat, 30k) 포즈 최적화 끔 | 학습 / PSNR 평가·학습 시점 / SSIM / LPIPS / 떠다님 | (2DGS 만 해 봄: 48.9분, 벽 덮임 54%) | 17.3분 / 15.38·25.87 / 0.599 / 0.616 / 31.1% |
+| 3. 3DGS 포즈 최적화 켬 | 〃 | – | 18.5분 / **15.75·26.81** / **0.607** / **0.592** / **29.8%** |
+
+- **1. 기존 파이프라인**: 새 방은 벽 덮임이 56%로 지난번(66%)보다 낮고 국소 거칠기도 큼 (사진 158장 중 VGGT 상한 120장만 사용). 스무딩은 두 방 모두 거칠기만 약 6% 줄이고 벽 휨·구멍은 그대로.
+  새 잡음 규칙(벽 법선 방향 두께 ≤ 0.22m 이고 벽에서 0.15m 안인 판, 8cm 보다 얇은 상자 제거)으로 보드 벽 앞 0.85×2.28×0.20m 판 등 5~6개가 빠짐 (`proxy-ransac/<메시>/report.json` 의 `boxes_removed`)
+- **2. 하이브리드**: 물건을 치운 효과로 시드별 SpatialLM 상자 수가 줄고(11~17 → 9~14) 투표 통과 상자도 정리됨. 하지만 RANSAC 과의 IoU 는 0.54 → 0.40 으로 낮아짐
+  (이번 방은 RANSAC 이 책장 둘을 한 상자(0.35×1.71×1.95m)로 묶고, 하이브리드는 bookcase 3개로 나눔 → 상자 단위로는 하이브리드가 실제에 더 가까워 보임).
+  점구름 맞춤에서 옆 가구 점이 섞이면 상자가 부풀어서(침대가 2.03×1.16m) RANSAC 상자로 옆 가구 점을 갈라내고 크기를 SpatialLM + 25cm 로 제한함 → 침대 1.95×0.94×0.95m (RANSAC IoU 0.42 → 0.56). 문·창은 시드 절반 이상에서 나온 것이 없어 0개.
+  상자별 표: `experiments/hybrid/<메시>/box_compare.md`
+- **3. 3DGS**: 학습 시점 PSNR 26~27 인데 평가 시점 15~16 → **약 10dB 차이 = 새 시점 일반화 실패**. 원인은 VGGT 포즈 오차와 근접 사진 부족(평가 그림에서 바닥·물건 근접 사진이 크게 어긋남). 포즈 최적화는 모든 지표에서 조금 낫지만(평가 +0.4dB, 학습 +0.9dB, 떠다님 −1.3%p, 시간 +7%) 차이를 메우지 못함.
+  방 안 가시 가우시안의 약 30%가 TSDF 표면에서 10cm 넘게 떠 있음 (TSDF 에도 구멍이 있어 절대값보다 두 변형의 상대 비교로 봄).
+  영상: `3dgs/<메시>/3dgs_tour_compare.mp4` (학습 카메라 촬영 순서대로 16초 둘러보기, 왼쪽 끔/오른쪽 켬, 둘 다 VGGT 포즈 경로라 켬 쪽에 조금 불리), `3dgs_compare.mp4`(트레이너 기본 궤적 3.6초, RGB+깊이), 평가 시점 그림 `3dgs_compare.png`
+- **소요 시간 참고** (120장, 1600×1200, RTX 3090): VGGT 포즈 25초 + 3DGS 학습 17~19분 ≈ 18분. COLMAP SfM 으로 포즈를 구하면 5~20분 더 들고, 흰 벽에서는 매칭 부족으로 일부만 등록될 위험이 큼 (지난번 BA 시도에서 발산)
 
 ### 메시 개선 실험 비교 (2026-11-23, `room_20261110_myroom-charuco`, 실측 2.5×3.3m)
 
@@ -136,6 +166,8 @@
 
 ## 사용자 확인 필요
 
+- **interfaces.md 갱신 확인 요청 (공유 파일이라 고치지 않음)**: 2절 실험 방법 이름에 `hybrid`, `3dgs` 추가, 2-1절 `method`에 `hybrid`(파일 이름 `proxy_hybrid.json`, `confidence` = 투표 비율 = 표 수 / 시드 수) 추가. 확인해 주시면 반영하고 변경 기록에 남기겠습니다. 상자에는 규약 밖 참고 필드(`votes`, `label_votes`, `labels_seen`, `refit`, `note`)도 들어 있습니다
+- 3DGS 를 더 밀어볼지: 평가 시점 품질의 걸림돌은 포즈 정확도와 근접 사진 수 (사진 158장 전부 쓰기, 평가 시점 포즈 보정, 깊이 손실 등이 후보)
 - cam1/cam3/cam4 ↔ 포트 지정 (`0b:00.0-5`, `0b:00.0-7`, `0f:00.0-1` 중): cam2 재장착 때 렌즈를 cam1→cam4 순서로 3초씩 가리면 기록
 - 새 방 메시로 실험(스무딩/SpatialLM/2DGS)도 다시 돌릴지
 - 메시 실험 중 `room_latest`로 올릴 것이 있는지 (추천: 충돌체는 `proxy.glb` 또는 `smooth_t30-s50k.glb`, 표시용은 원본 유지). 2DGS 는 포즈 개선 전에는 비추천
@@ -172,6 +204,7 @@
 
 | 시각 | 내용 |
 |---|---|
+| 2026-11-25 01:15 | 메시 고도화 2차: RANSAC 프록시에 벽 앞 얇은 판 잡음 규칙(두 방 5~6개 제거), SpatialLM 8시드 투표 + 점구름 맞춤 하이브리드(`proxy_hybrid.json`, RANSAC 상자별 비교표), 3DGS(gsplat) 포즈 최적화 끔/켬 (평가 PSNR 15.4/15.8, 학습 시점 25.9/26.8), 두 방 나란히 비교. gsplat 환경, COLMAP bin 출력 추가 |
 | 2026-11-25 00:10 | 벽 보드 새 위치로 `scans/20261124` 158장 → 메시 재생성(120장), 검증 통과 후 room_latest 교체. 카메라 미리보기 서버(Tailscale, 4대 한 화면, 초점 수치, 자동 재연결) 작성, 초점·각도 맞춤 시작. cam2(`0e:00.3-2`) 케이스 초점 나사 파손 → 케이스 재주문, 약 5일 뒤 재개 |
 | 2026-11-24 00:20 | 메시 개선 실험 4종 + 비교표, interfaces.md proxy.json 정의, 손 ChArUco 보드(3×4 95mm, 17~22번) PDF·두 보드 구분 검출, 2DGS/SpatialLM 별도 환경. 사용자 수정(가상환경 경로 이동, CLAUDE.md 규칙) 커밋 |
 | 2026-11-14 18:00 | 고정 카메라 4대: 1대가 안 뜨던 원인 = 연장 케이블 불량(꽂아도 커널 로그 없음, 직결 시 정상) → 교체 후 4대 인식. 4대 동시 MJPG 1280×720 30.2fps, 오류 없음. 4대 시리얼 모두 SN0001 → by-path 로 구분, Bus 1 에 2대(포트 5·7)가 같은 컨트롤러 공유 |

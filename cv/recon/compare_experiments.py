@@ -85,14 +85,35 @@ def main() -> None:
         nm = f"SpatialLM {s['input']} s{s['seed']}"
         rows.append(proxy_row(nm, p, P, s["time_infer_s"], rel(f.with_suffix(".png"))))
 
+    hy = root / "hybrid" / src.stem / "proxy_hybrid.json"
+    if hy.is_file():
+        p = json.loads(hy.read_text())
+        r = proxy_row(f"하이브리드 (SpatialLM {p['stats']['seeds']}시드 투표 + 점구름 맞춤)", p, P,
+                      p["stats"]["time_total_s"], rel(hy.with_name("preview.png")))
+        cs = p["stats"].get("compare", {})
+        r["삼각형/상자"] += f" (투표 {cs.get('voted')}, RANSAC 보탬 {cs.get('added_from_ransac')}, 가구 IoU {cs.get('mean_iou_furniture')})"
+        rows.append(r)
     cols = ["방법", "시간", "삼각형/상자", "방 크기", "벽 평면도", "구멍", "미리보기"]
     lines = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     for r in rows:
         r = dict(r, 시간=fmt_t(r["시간"]), 미리보기=f"`{r['미리보기']}`")
         lines.append("| " + " | ".join(str(r[c]) for c in cols) + " |")
+    gs = root / "3dgs" / src.stem / "3dgs_metrics.json"
+    if gs.is_file():
+        g = json.loads(gs.read_text())
+        lines += ["", "3DGS (gsplat, 평가 시점 = 8장마다 1장, VGGT 포즈로 렌더)", "",
+                  "| 변형 | 학습 | 가우시안 | PSNR 평가 / 학습 시점 | SSIM | LPIPS | 떠다님 (개수 / 불투명도 가중) | 방 밖 | 영상 |",
+                  "|---|---|---:|---|---:|---:|---|---:|---|"]
+        for v, m in g["variants"].items():
+            name = {"noposeopt": "포즈 최적화 끔", "poseopt": "포즈 최적화 켬"}.get(v, v)
+            lines.append(f"| {name} | {fmt_t(m['train_time_s'])} | {m['num_gs']:,} | {m['psnr']:.2f} / {m.get('psnr_train', float('nan')):.2f} | {m['ssim']:.3f} | "
+                         f"{m['lpips']:.3f} | {m['floater_frac']:.1%} / {m['floater_frac_alpha']:.1%} | {m['outside_room_frac']:.1%} | "
+                         f"`{rel(gs.with_name(m.get('video', '')))}` |")
+        if g.get("compare_mp4"):
+            lines.append(f"\n나란히 비교: `{rel(gs.with_name(g['compare_mp4']))}`, 평가 시점 그림 `{rel(gs.with_name(g['compare_png']))}`")
     lab = [f"- {r['방법']}: {r['_labels']}" for r in rows if r.get("_labels")]
     md = (f"대상 `{src.stem}` (실측 {MEASURED[0]}×{MEASURED[1]}m). 미리보기 경로는 `${{SHARED_DIR}}` 기준.\n\n"
-          + "\n".join(lines) + ("\n\n상자 종류 (SpatialLM)\n" + "\n".join(lab) if lab else "") + "\n")
+          + "\n".join(lines) + ("\n\n상자 종류 (SpatialLM/하이브리드)\n" + "\n".join(lab) if lab else "") + "\n")
     print(md)
     out = root / f"compare_{src.stem}.md"
     out.write_text(md, encoding="utf-8")

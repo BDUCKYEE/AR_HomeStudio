@@ -308,12 +308,33 @@ def fit_proxy(P: np.ndarray, C: np.ndarray, cams: np.ndarray, cfg: dict) -> tupl
         if ly < cfg["box_floor_snap_m"]:
             ly = 0.0
         size = np.array([su.max() - su.min(), hy - ly, sz.max() - sz.min()])
-        if size.max() < cfg["box_min_extent_m"] or min(size[0], size[2]) < cfg["box_min_thickness_m"] or size[1] <= 0:
+        if size.max() < cfg["box_min_extent_m"] or size[1] <= 0:      # 얇은 판은 아래에서 이유와 함께 제거
             continue
         center = ux * (su.max() + su.min()) / 2 + uz * (sz.max() + sz.min()) / 2
         center[1] = (ly + hy) / 2
         pm = plab == k
         boxes.append(dict(center=center, size=size, yaw=th, points=int(pm.sum()), color=QC[pm].mean(0)))
+    # 벽 앞 얇은 판 제거: VGGT 벽은 두께 잡음(±10cm)이 있어 평면 띠 밖으로 나온 점이 벽에 붙은 얇은 상자가 된다
+    # (실측 20261124 방: 보드 벽 앞 0.85×2.28×0.20m 등 5개). 벽 법선 방향 두께 ≤ wall_slab_max_m 이고
+    # 벽에서 wall_slab_gap_m 안에 붙어 있으면 잡음으로 보고 뺀다
+    removed = []
+    keep_b = []
+    for b in boxes:
+        cr = box_corners(b["center"], b["size"], np.degrees(b["yaw"]))
+        why = None
+        for _, _, w in edges:
+            dist = cr @ w["n"] + w["d"]
+            if dist.min() <= cfg["wall_slab_gap_m"] and np.ptp(dist) <= cfg["wall_slab_max_m"]:
+                why = f"벽 앞 얇은 판 (두께 {np.ptp(dist):.2f}m, 벽에서 {max(dist.min(), 0):.2f}m)"
+                break
+        if why is None and min(b["size"][0], b["size"][2]) < cfg["box_min_thickness_m"]:
+            why = f"너무 얇음 ({min(b['size'][0], b['size'][2]):.2f}m)"
+        if why:
+            removed.append({"center": np.round(b["center"], 3).tolist(), "size": np.round(b["size"], 3).tolist(), "reason": why})
+        else:
+            keep_b.append(b)
+    boxes = keep_b
+    dbg["boxes_removed"] = removed
     boxes.sort(key=lambda b: -np.prod(b["size"]))
     dbg["furniture"] = {"points": int(len(Q)), "cells_occupied": int(occ.sum()), "regions": nlab,
                         "boxes": len(boxes), "boxes_kept": min(len(boxes), cfg["max_boxes"])}
